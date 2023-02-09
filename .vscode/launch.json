@@ -1,0 +1,50 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Attach using Process Id",
+            "type": "python",
+            "request": "attach",
+            "processId": "${command:pickProcess}",
+            "justMyCode": true
+        },
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--GPU=0",
+                "--DATASET=PA_M",
+                // "--DATASET=KSDD2",
+                "--RUN_NAME=FS280",
+                "--DATASET_PATH=E:/AI/FAPS/dataset",
+                // "--DATASET_PATH=E:/AI/FAPS/dataset/KolektorSDD2",
+                "--RESULTS_PATH=E:\\AI\\FAPS\\code\\Mixedsupervision\\results",
+                "--SAVE_IMAGES=True",
+                "--DILATE=7",
+                "--EPOCHS=50",
+                "--LEARNING_RATE=1",
+                "--DELTA_CLS_LOSS=0.5",
+                "--BATCH_SIZE=1",
+                "--WEIGHTED_SEG_LOSS=False",
+                "--WEIGHTED_SEG_LOSS_P=2 ",
+                "--WEIGHTED_SEG_LOSS_MAX=3 ",
+                "--DYN_BALANCED_LOSS=True",
+                "--GRADIENT_ADJUSTMENT=True",
+                "--FREQUENCY_SAMPLING=True",
+                "--TRAIN_NUM=-1",
+                "--NUM_SEGMENTED=280",
+                "--USE_BEST_MODEL=True",
+                "--REPRODUCIBLE_RUN=True",
+                "--VALIDATE_ON_TEST=False",
+                "--FOLD=0"
+            ]
+        }
+    ]
+}
