@@ -90,7 +90,7 @@ class Dataset(torch.utils.data.Dataset):
 
             if np.random.rand() > 0.5:
                 img = img[:, ::-1, :]
-                seg_mask = np.fliplr(seg_mask)
+                seg_mask = seg_mask[:, :, ::-1]
                 if self.cfg.WEIGHTED_SEG_LOSS:
                     seg_loss_mask = np.fliplr(seg_loss_mask)
 
@@ -128,11 +128,11 @@ class Dataset(torch.utils.data.Dataset):
             else:
                 mask = np.zeros(self.cfg.NUM_CLASS,*self.image_size)[0]
             for i in np.where(np.array(y_val) == 1)[0]: 
-                j = i
-                if i >= 3:
-                    j = i+1
-                path = f'{path[:-4]}_{i}.jpg'
-                lbl = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+                j = i+1
+                if i >= 2:
+                    j = i+2
+                path2 = f'{path[:-4]}_{j}.jpg'
+                lbl = cv2.imread(path2, cv2.IMREAD_GRAYSCALE)
                 lbl[lbl>10] = 255
                 if dilate is not None and dilate > 1:
                     lbl = cv2.dilate(lbl, np.ones((dilate, dilate)))
@@ -141,6 +141,7 @@ class Dataset(torch.utils.data.Dataset):
                 
                 mask[i] = np.array((lbl / 255.0), dtype=np.float32)
             
+
             return mask, np.max(mask) > 0
         
         else :

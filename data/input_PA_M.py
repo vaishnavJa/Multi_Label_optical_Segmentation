@@ -78,6 +78,7 @@ class PAMultiDataset(Dataset):
 
         self.pos_samples = pos_samples
         self.neg_samples = neg_samples
+        # self.neg_samples = neg_samples = []
 
         self.num_pos = len(pos_samples)
         self.num_neg = len(neg_samples)

@@ -1,5 +1,4 @@
 import matplotlib
-
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from models import SegDecNet
@@ -254,39 +253,55 @@ class End2End:
             # pred_seg_img = torch.argmax(pred_seg, dim=1)
             # pred_seg_img = pred_seg_img.detach().cpu().numpy()
            
-            seg_mask_img = torch.argmax(seg_mask, dim=1)
+            # seg_mask_img = torch.argmax(seg_mask, dim=1)
+            
             seg_mask = seg_mask.detach().cpu().numpy()
-            seg_mask_img = seg_mask_img.detach().cpu().numpy()
+            # seg_mask_img = seg_mask_img.detach().cpu().numpy()
 
             y_val = y_val.detach().cpu().numpy().reshape(-1)
             sample_name = sample_name.item()
 
-            predictions.append(prediction)
-            ground_truths.append(y_val)
+            # predictions.append(prediction)
+            # ground_truths.append(y_val)
 
-            res.append((prediction, None, None, y_val, sample_name,iou_metric))
+            res.append((prediction.reshape(-1),y_val, sample_name,iou_metric))
             if not is_validation:
                 if save_images:
                     image = cv2.resize(np.transpose(image[0, :, :, :], (1, 2, 0)), dsize)
                     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-                    ground_label = np.transpose(seg_mask_img, (1, 2, 0))*np.array([[0,0,0]])
+                    # np.transpose(seg_mask_img, (1, 2, 0))
+                    seg_mask = np.transpose(seg_mask[0], (1, 2, 0))
+                    ground_label = np.zeros((*seg_mask.shape[:-1],3))#np.transpose(seg_mask[0], (1, 2, 0))*np.array([[0,0,0]])
+                    
+                    pred_seg = np.transpose(pred_seg[0], (1, 2, 0))
+                    pred_seg = np.where(pred_seg < self.cfg.IOU_THRESHOLD ,0,pred_seg)
+                    pred_label = np.zeros((*seg_mask.shape[:-1],3))
 
                     for i in range(ground_label.shape[0]):
                         for j in range(ground_label.shape[1]):
-                            label = seg_mask_img[i][j]
-                            if seg_mask[i][j].max != 0:
-                                ground_label[i][j] = colors[label]
-                        
-                    ground_label = cv2.resize(ground_label, dsize,interpolation = cv2.INTER_NEAREST)
+                            if seg_mask[i,j].max() != 0:
+                                label = seg_mask[i,j].argmax()
+                                ground_label[i,j] = colors[label]
+                            if pred_seg[i,j].max() != 0:
+                                label = pred_seg[i,j].argmax()
+                                pred_label[i,j] = colors[label]
 
-                    pred_seg = np.where(pred_seg < 0.5 ,0,pred_seg)
+                        
+                    ground_label = cv2.resize(ground_label, seg_mask.shape[::-1][1:],interpolation = cv2.INTER_NEAREST).astype(np.uint8)
+                    # ground_label = cv2.cvtColor(ground_label, cv2.COLOR_RGB2BGR)  
+                    pred_label = cv2.resize(pred_label,seg_mask.shape[::-1][1:],interpolation = cv2.INTER_NEAREST).astype(np.uint8) 
+                    # pred_label = cv2.cvtColor(pred_label, cv2.COLOR_RGB2BGR) 
+                    # pred_seg = np.where(pred_seg < 0.5 ,0,pred_seg)
+
+                    # pred_label = np.transpose(seg_mask_img, (1, 2, 0))*np.array([[0,0,0]])
+
                                         
                     if self.cfg.WEIGHTED_SEG_LOSS:
                         seg_loss_mask = cv2.resize(seg_loss_mask.numpy()[0, 0, :, :], dsize)
-                        utils.plot_sample(sample_name, image, pred_seg, seg_loss_mask, save_folder, decision=prediction, plot_seg=plot_seg)
+                        utils.plot_sample(sample_name, image, pred_seg, seg_loss_mask, save_folder, decision=prediction, plot_seg=plot_seg,threshold=self.cfg.IOU_THRESHOLD)
                     else:
-                        utils.plot_sample(sample_name, image, pred_seg, seg_mask_img, save_folder, decision=prediction, plot_seg=plot_seg)
+                        utils.plot_sample(sample_name, image, pred_label, ground_label, save_folder, decision=prediction, plot_seg=plot_seg,threshold=self.cfg.IOU_THRESHOLD)
 
         if is_validation:
             iou_m = np.mean(np.array(res)[:,5])
@@ -299,8 +314,8 @@ class End2End:
         else:
             # metrics2 = utils.get_metrics(np.array(true_seg).reshape(-1),np.array(predicted_seg).reshape(-1))
             # self._log(f"TEST || IOU_Thre={metrics2['best_thr']:f}")
-            # utils.evaluate_metrics(res, self.run_path, self.run_name,self.cfg.IOU_THRESHOLD)
-            iou_m = np.mean(np.array(res)[:,5])
+            utils.evaluate_metrics(res, self.run_path, self.run_name,self.cfg.IOU_THRESHOLD)
+            iou_m = np.mean(np.array(res)[:,3])
             self._log(f"TESTING || IOU={iou_m:f}")
 
     def get_dec_gradient_multiplier(self):

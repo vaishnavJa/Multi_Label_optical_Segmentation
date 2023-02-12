@@ -3,7 +3,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import precision_recall_curve, roc_curve, auc
+from sklearn.metrics import precision_recall_curve, roc_curve, auc,f1_score
 import pandas as pd
 import os
 import errno
@@ -31,28 +31,29 @@ def calc_confusion_mat(D, Y):
     return FP, FN, TN, TP
 
 
-def plot_sample(image_name, image, segmentation, label, save_dir, decision=None, blur=True, plot_seg=False):
+def plot_sample(image_name, image, segmentation, label, save_dir, decision=None, blur=True, plot_seg=False, threshold = 0.5):
     plt.figure()
     plt.clf()
-    plt.subplot(2, NUM_CLASS//2 + 1, NUM_CLASS+1)
+    plt.subplot(1,4,1)
     plt.xticks([])
     plt.yticks([])
     plt.title('Input image')
     if image.shape[0] < image.shape[1]:
         image = np.transpose(image, axes=[1, 0, 2])
-        segmentation = np.transpose(segmentation)
+    if segmentation.shape[0] < segmentation.shape[1]:
+        segmentation = np.transpose(segmentation,axes=[1,0,2])
         label = np.transpose(label,axes=[1, 0, 2])
     if image.shape[2] == 1:
         plt.imshow(image, cmap="gray")
     else:
         plt.imshow(image)
 
-    colors = np.array([(50, 69, 57), (170, 98, 195), (222, 222, 55), (112, 168, 172), (112, 215, 214), (181, 72, 24), (22, 132, 221), (167, 228, 28), (124, 33, 204), (16, 0, 241), (72, 117, 136), (70, 113, 190), (149, 89, 6), (255, 255, 255)])
-    plt.subplot(1, 4, 3)
+    # colors = np.array([(50, 69, 57), (170, 98, 195), (222, 222, 55), (112, 168, 172), (112, 215, 214), (181, 72, 24), (22, 132, 221), (167, 228, 28), (124, 33, 204), (16, 0, 241), (72, 117, 136), (70, 113, 190), (149, 89, 6), (255, 255, 255)])
+    plt.subplot(1, 4, 2)
     plt.xticks([])
     plt.yticks([])
     plt.title('Groundtruth')
-    plt.imshow(label, cmap="gray")
+    plt.imshow(label)
 
     plt.subplot(1, 4, 3)
     plt.xticks([])
@@ -60,25 +61,25 @@ def plot_sample(image_name, image, segmentation, label, save_dir, decision=None,
     if decision is None:
         plt.title('Output')
     else:
-        plt.title(f"Output: {decision.sum():.5f}")
+        plt.title(f"Output: {np.argmax(decision):.5f}")
     # display max
-    vmax_value = max(1, np.max(segmentation))
-    plt.imshow(segmentation, cmap="jet", vmax=vmax_value)
+    # vmax_value = max(1, np.max(segmentation))
+    plt.imshow(segmentation)
 
-    plt.subplot(1, 4, 4)
-    plt.xticks([])
-    plt.yticks([])
-    plt.title('Output scaled')
-    if blur:
-        normed = segmentation / segmentation.max()
-        blured = cv2.blur(normed, (32, 32))
-        plt.imshow((blured / blured.max() * 255).astype(np.uint8), cmap="jet")
-    else:
-        plt.imshow((segmentation / segmentation.max() * 255).astype(np.uint8), cmap="jet")
+    # plt.subplot(1, 4, 4)
+    # plt.xticks([])
+    # plt.yticks([])
+    # plt.title('Output scaled')
+    # if blur:
+    #     normed = segmentation / segmentation.max()
+    #     blured = cv2.blur(normed, (32, 32))
+    #     plt.imshow((blured / blured.max() * 255).astype(np.uint8), cmap="jet")
+    # else:
+    #     plt.imshow((segmentation / segmentation.max() * 255).astype(np.uint8), cmap="jet")
 
-    out_prefix = '{:.3f}_'.format(decision) if decision is not None else ''
+    out_prefix = '{:.3f}_'.format(np.argmax(decision)) if decision is not None else ''
 
-    plt.savefig(f"{save_dir}/{out_prefix}result_{image_name}.jpg", bbox_inches='tight', dpi=300)
+    plt.savefig(f"{save_dir}/{threshold*10}/{image_name}.jpg", bbox_inches='tight', dpi=300)
     plt.close()
 
     if plot_seg:
@@ -124,43 +125,45 @@ def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor,threshold = 0.5):
 def evaluate_metrics(samples, results_path, run_name, threshold = 0.5):
     samples = np.array(samples)
 
-    img_names = samples[:, 4]
+    img_names = samples[:, 2]
     predictions = samples[:, 0]
-    labels = samples[:, 3].astype(np.float32)
-    iou_metric = samples[:,5]
+    labels = samples[:, 1]
+    iou_metric = samples[:,3]
+    fscore = [f1_score(y_true,y_pred>threshold,average='weighted') for y_true,y_pred in zip(labels,predictions)] 
 
-    metrics = get_metrics(labels, predictions)
+    # metrics = get_metrics(labels, predictions)
 
     df = pd.DataFrame(
-        data={'prediction': predictions,
+        data={'prediction': [','.join(str(round(i,2)) for i in j) for j in predictions],
                 'IOU':iou_metric,
-                'decision': metrics['decisions'],
-                'ground_truth': labels,
+                # 'decision': [','.join(str(i) for i in j) for j in predictions],
+                'ground_truth': [','.join(str(i) for i in j) for j in labels],
+                'fscore' : fscore,
                 'img_name': img_names})
     df.to_csv(os.path.join(results_path, f'results{threshold*10}.csv'), index=False)
 
-    print(
-        f'{run_name} EVAL IOU={np.mean(iou_metric):f}, and AP={metrics["AP"]:f}, w/ best thr={metrics["best_thr"]:f} at f-m={metrics["best_f_measure"]:.3f} and FP={sum(metrics["FP"]):d}, FN={sum(metrics["FN"]):d}')
+    # print(
+    #     f'{run_name} EVAL IOU={np.mean(iou_metric):f}, and AP={metrics["AP"]:f}, w/ best thr={metrics["best_thr"]:f} at f-m={metrics["best_f_measure"]:.3f} and FP={sum(metrics["FP"]):d}, FN={sum(metrics["FN"]):d}')
 
-    with open(os.path.join(results_path, 'metrics.pkl'), 'wb') as f:
-        pickle.dump(metrics, f)
-        f.close()
+    # with open(os.path.join(results_path, 'metrics.pkl'), 'wb') as f:
+    #     pickle.dump(metrics, f)
+        # f.close()
 
-    plt.figure(1)
-    plt.clf()
-    plt.plot(metrics['recall'], metrics['precision'])
-    plt.title('Average Precision=%.4f' % metrics['AP'])
-    plt.xlabel('Recall')
-    plt.ylabel('Precision')
-    plt.savefig(f"{results_path}/precision-recall.pdf", bbox_inches='tight')
+    # plt.figure(1)
+    # plt.clf()
+    # plt.plot(metrics['recall'], metrics['precision'])
+    # plt.title('Average Precision=%.4f' % metrics['AP'])
+    # plt.xlabel('Recall')
+    # plt.ylabel('Precision')
+    # plt.savefig(f"{results_path}/precision-recall.pdf", bbox_inches='tight')
 
-    plt.figure(1)
-    plt.clf()
-    plt.plot(metrics['FPR'], metrics['TPR'])
-    plt.title('AUC=%.4f' % metrics['AUC'])
-    plt.xlabel('False positive rate')
-    plt.ylabel('True positive rate')
-    plt.savefig(f"{results_path}/ROC.pdf", bbox_inches='tight')
+    # plt.figure(1)
+    # plt.clf()
+    # plt.plot(metrics['FPR'], metrics['TPR'])
+    # plt.title('AUC=%.4f' % metrics['AUC'])
+    # plt.xlabel('False positive rate')
+    # plt.ylabel('True positive rate')
+    # plt.savefig(f"{results_path}/ROC.pdf", bbox_inches='tight')
 
 
 def get_metrics(labels, predictions):
