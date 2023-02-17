@@ -88,12 +88,12 @@ if __name__ == '__main__':
             
     """training model """
     
-    # configuration = Config()
-    # configuration.merge_from_args(args)
-    # configuration.init_extra()
+    configuration = Config()
+    configuration.merge_from_args(args)
+    configuration.init_extra()
 
-    # end2end = End2End(cfg=configuration)
-    # end2end.train()
+    end2end = End2End(cfg=configuration)
+    end2end.train()
 
     """hyper param selection """
     # RUN_NAME = args.RUN_NAME
@@ -155,27 +155,27 @@ if __name__ == '__main__':
 
     """IOU threshold selection"""
 
-    configuration = Config()
-    configuration.merge_from_args(args)
-    configuration.init_extra()
+    # configuration = Config()
+    # configuration.merge_from_args(args)
+    # configuration.init_extra()
 
-    # THRESHOLDS = [.1,.2,.3,.4,.5]
-    THRESHOLDS = [.2]
+    # # THRESHOLDS = [.1,.2,.3,.4,.5]
+    # THRESHOLDS = [.2]
 
 
-    for thresh in THRESHOLDS:
+    # for thresh in THRESHOLDS:
 
-        configuration.IOU_THRESHOLD = thresh
-        # configuration.RUN_NAME = f'{configuration.RUN_NAME }/THRESHOLD/{thresh}'
-        end2end = End2End(cfg=configuration)
-        device = end2end._get_device()
-        model = end2end._get_model().to(device)
-        end2end._set_results_path()
-        optimizer = end2end._get_optimizer(model)
-        loss_seg, loss_dec = end2end._get_loss(True), end2end._get_loss(False)    
-        end2end.set_dec_gradient_multiplier(model, 0.0)
-        # end2end.threshold_selection(model, device, True, False, True)
-        end2end.eval(model, device, True, False, True)
+    #     configuration.IOU_THRESHOLD = thresh
+    #     # configuration.RUN_NAME = f'{configuration.RUN_NAME }/THRESHOLD/{thresh}'
+    #     end2end = End2End(cfg=configuration)
+    #     device = end2end._get_device()
+    #     model = end2end._get_model().to(device)
+    #     end2end._set_results_path()
+    #     optimizer = end2end._get_optimizer(model)
+    #     loss_seg, loss_dec = end2end._get_loss(True), end2end._get_loss(False)    
+    #     end2end.set_dec_gradient_multiplier(model, 0.0)
+    #     # end2end.threshold_selection(model, device, True, False, True)
+    #     end2end.eval(model, device, True, False, True)
 
 
 

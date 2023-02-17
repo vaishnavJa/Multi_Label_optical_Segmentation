@@ -24,7 +24,7 @@ class PAMultiDataset(Dataset):
 
     def read_split(self):
         fn = f"PA_M/split_{self.cfg.NUM_SEGMENTED}.pyb"
-        with open(f"splits/{fn}", "rb") as f:
+        with open(f"/home/hpc/iwfa/iwfa024h/Multi_Label_optical_Segmentation/splits/{fn}", "rb") as f:
             vals = pickle.load(f)
         return vals
 
@@ -65,15 +65,15 @@ class PAMultiDataset(Dataset):
             is_seg,seg_p = check_has_file(sample_name,seg_paths)
             
             if is_seg:
-                seg_p = str(PureWindowsPath(seg_p))
-                pos_samples.append([None,None,None,is_seg,str(PureWindowsPath(img_p)),seg_p,sample_name,y_vals[i]])
+                seg_p = seg_p
+                pos_samples.append([None,None,None,is_seg,img_p,seg_p,sample_name,y_vals[i]])
             else:
-                pos_samples.append([None,None,None,is_seg,str(PureWindowsPath(img_p)),seg_p,sample_name,y_vals[i]])
+                pos_samples.append([None,None,None,is_seg,img_p,seg_p,sample_name,y_vals[i]])
  
         for img_p in neg_paths:
             sample_name = os.path.basename(os.path.normpath(img_p))
             sample_name = int(sample_name[:-4])
-            neg_samples.append([None,None,None,True,str(PureWindowsPath(img_p)),None,sample_name,np.zeros(self.cfg.NUM_CLASS)])
+            neg_samples.append([None,None,None,True,img_p,None,sample_name,np.zeros(self.cfg.NUM_CLASS)])
 
 
         self.pos_samples = pos_samples

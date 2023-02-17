@@ -405,6 +405,7 @@ class End2End:
 
     def _get_device(self):
         return f"cuda:{self.cfg.GPU}"
+        # return f"cpu"
 
     def _set_results_path(self):
         self.run_name = f"{self.cfg.RUN_NAME}_FOLD_{self.cfg.FOLD}" if self.cfg.DATASET in ["KSDD", "DAGM"] else self.cfg.RUN_NAME
