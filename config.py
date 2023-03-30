@@ -19,6 +19,7 @@ class Config:
     DYN_BALANCED_LOSS = None
     GRADIENT_ADJUSTMENT = None
     FREQUENCY_SAMPLING = True
+    HYPERPARAM = False
 
     # Default values
     FOLD = None
@@ -101,8 +102,8 @@ class Config:
                 print("Will use ON_DEMAND_READ even though it is set on False!")
         
         elif self.DATASET == 'PA_M':
-            self.INPUT_WIDTH = 512
-            self.INPUT_HEIGHT = 256
+            self.INPUT_WIDTH = 3000
+            self.INPUT_HEIGHT = 1496
             self.INPUT_CHANNELS = 3
 
             # self.VALIDATE_ON_TEST = True
@@ -137,6 +138,7 @@ class Config:
         self.GRADIENT_ADJUSTMENT = args.GRADIENT_ADJUSTMENT
         self.FREQUENCY_SAMPLING = args.FREQUENCY_SAMPLING
         self.NUM_SEGMENTED = args.NUM_SEGMENTED
+        self.HYPERPARAM = args.HYPERPARAM
 
         if args.FOLD is not None: self.FOLD = args.FOLD
         if args.TRAIN_NUM is not None: self.TRAIN_NUM = args.TRAIN_NUM

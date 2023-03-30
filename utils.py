@@ -79,7 +79,7 @@ def plot_sample(image_name, image, segmentation, label, save_dir, decision=None,
 
     out_prefix = '{:.3f}_'.format(np.argmax(decision)) if decision is not None else ''
 
-    plt.savefig(f"{save_dir}/{threshold*10}/{image_name}.jpg", bbox_inches='tight', dpi=300)
+    plt.savefig(f"{save_dir}/{image_name}.jpg", bbox_inches='tight', dpi=300)
     plt.close()
 
     if plot_seg:
@@ -93,14 +93,16 @@ def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor,threshold = 0.5):
     # You can comment out this line if you are passing tensors of equal shape
     # But if you are passing output from UNet or something it will most probably
     # be with the BATCH x 1 x H x W shape
-    # outputs = outputs.squeeze(1)  # BATCH x 1 x H x W => BATCH x H x W
+    outputs = outputs.squeeze(0)  # BATCH x 1 x H x W => BATCH x H x W
+    # print(outputs.shape,labels.shape)
+    outputs = labels.squeeze(0)  # BATCH x 1 x H x W => BATCH x H x W
+    # exit()
     outputs = outputs> threshold
     labels = labels > 0.5
     intersection = (outputs & labels).float().sum((1, 2))  # Will be zero if Truth=0 or Prediction=0
     union = (outputs | labels).float().sum((1, 2))         # Will be zzero if both are 0
     
-    iou = (intersection + SMOOTH) / (union + SMOOTH)  # We smooth our devision to avoid 0/0
-    
+    iou = (intersection + SMOOTH) / (union + SMOOTH) 
     # thresholded = torch.clamp(20 * (iou - 0.5), 0, 10).ceil() / 10  # This is equal to comparing with thresolds
     
     return iou.mean()
@@ -122,7 +124,7 @@ def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor,threshold = 0.5):
 #     return iou.mean()
 
 
-def evaluate_metrics(samples, results_path, run_name, threshold = 0.5):
+def evaluate_metrics(samples, results_path, run_name, threshold = 0.5, prefix=''):
     samples = np.array(samples)
 
     img_names = samples[:, 2]
@@ -140,7 +142,7 @@ def evaluate_metrics(samples, results_path, run_name, threshold = 0.5):
                 'ground_truth': [','.join(str(i) for i in j) for j in labels],
                 'fscore' : fscore,
                 'img_name': img_names})
-    df.to_csv(os.path.join(results_path, f'results{threshold*10}.csv'), index=False)
+    df.to_csv(os.path.join(results_path, f'{prefix}_results{threshold*10}.csv'), index=False)
 
     # print(
     #     f'{run_name} EVAL IOU={np.mean(iou_metric):f}, and AP={metrics["AP"]:f}, w/ best thr={metrics["best_thr"]:f} at f-m={metrics["best_f_measure"]:.3f} and FP={sum(metrics["FP"]):d}, FN={sum(metrics["FN"]):d}')

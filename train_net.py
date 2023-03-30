@@ -7,6 +7,9 @@ from config import Config
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import optuna
+import time
+import joblib
 
 
 def str2bool(v):
@@ -52,6 +55,7 @@ def parse_args():
 
     parser.add_argument('--MEMORY_FIT', type=int, default=None, help="How many images can be fitted in GPU memory.")
     parser.add_argument('--SAVE_IMAGES', type=str2bool, default=None, help="Save test images or not.")
+    parser.add_argument('--HYPERPARAM', type=str2bool, required=True,  default=False, help="Whether running optuna.")
 
     args = parser.parse_args()
 
@@ -88,12 +92,51 @@ if __name__ == '__main__':
             
     """training model """
     
+    start = time.time()
     configuration = Config()
     configuration.merge_from_args(args)
     configuration.init_extra()
 
     end2end = End2End(cfg=configuration)
     end2end.train()
+    print(f"\n\ntotal time = {time.time() - start}")
+
+
+    """hyper param selection """
+
+    # def objective(trail):
+
+    #     vars(args)['DILATE'] = trail.suggest_int('DILATE',1,17)
+    #     # vars(args)['EPOCHS'] = trail.suggest_int('EPOCHS',50,150)
+    #     vars(args)["LEARNING_RATE"] = trail.suggest_float("LEARNING_RATE",0.0001,1.5)
+    #     vars(args)["DELTA_CLS_LOSS"] = trail.suggest_float("DELTA_CLS_LOSS",0,1)
+    #     # vars(args)["WEIGHTED_SEG_LOSS"] = trail.suggest_categorical("WEIGHTED_SEG_LOSS", [True, False])
+    #     # if vars(args)["WEIGHTED_SEG_LOSS"]:
+    #     #     vars(args)["WEIGHTED_SEG_LOSS"] = trail.suggest_int("WEIGHTED_SEG_LOSS_P",0,1)
+    #     #     vars(args)["WEIGHTED_SEG_LOSS"] = trail.suggest_int("WEIGHTED_SEG_LOSS_MAX",0,1)
+        
+    #     vars(args)["DYN_BALANCED_LOSS"] = trail.suggest_categorical("DYN_BALANCED_LOSS", [True, False])
+    #     vars(args)["GRADIENT_ADJUSTMENT"] = trail.suggest_categorical("GRADIENT_ADJUSTMENT", [True, False])
+    #     vars(args)["FREQUENCY_SAMPLING"] = trail.suggest_categorical("FREQUENCY_SAMPLING", [True, False])
+        
+    #     # args.RESULTS_PATH = os.path.join("E:/AI/FAPS/code/Mixedsupervision/results",param,str(val))
+    #     configuration = Config()
+    #     configuration.merge_from_args(args)
+    #     configuration.init_extra()
+
+    #     # configuration.IOU_THRESHOLD = 0.5
+    #     end2end = End2End(cfg=configuration)
+    #     loss_seg, loss_dec, total_loss, iou, _ = end2end.train(trail)
+    #     return iou
+    
+
+    # study = optuna.create_study(direction='maximize')
+    # joblib.dump(study, "studybefore.pkl")
+    # study.optimize(objective, n_trials=100)
+    # joblib.dump(study, "study.pkl")
+
+   
+
 
     """hyper param selection """
     # RUN_NAME = args.RUN_NAME
@@ -153,14 +196,12 @@ if __name__ == '__main__':
 
     # pd.read_csv('losses.csv')
 
-    """IOU threshold selection"""
+    # """IOU threshold selection"""
 
-    # configuration = Config()
-    # configuration.merge_from_args(args)
-    # configuration.init_extra()
+    # configuration = load
 
-    # # THRESHOLDS = [.1,.2,.3,.4,.5]
-    # THRESHOLDS = [.2]
+    # # THRESHOLDS = [0.1,0.2,0.3,0.4,0.5]
+    # THRESHOLDS = [.1]
 
 
     # for thresh in THRESHOLDS:
@@ -174,8 +215,8 @@ if __name__ == '__main__':
     #     optimizer = end2end._get_optimizer(model)
     #     loss_seg, loss_dec = end2end._get_loss(True), end2end._get_loss(False)    
     #     end2end.set_dec_gradient_multiplier(model, 0.0)
-    #     # end2end.threshold_selection(model, device, True, False, True)
-    #     end2end.eval(model, device, True, False, True)
+    #     end2end.threshold_selection(model, device, True, False, True, 'VAL')
+    #     end2end.eval(model, device, False, False, True,'TEST')
 
 
 
