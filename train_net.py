@@ -132,7 +132,7 @@ if __name__ == '__main__':
 
     # study = optuna.create_study(direction='maximize')
     # joblib.dump(study, "studybefore.pkl")
-    # study.optimize(objective, n_trials=100)
+    # study.optimize(objective, n_trials=20)
     # joblib.dump(study, "study.pkl")
 
    
@@ -196,12 +196,14 @@ if __name__ == '__main__':
 
     # pd.read_csv('losses.csv')
 
-    # """IOU threshold selection"""
+    """IOU threshold selection"""
 
-    # configuration = load
+    # configuration = Config()
+    # configuration.merge_from_args(args)
+    # configuration.init_extra()
 
-    # # THRESHOLDS = [0.1,0.2,0.3,0.4,0.5]
-    # THRESHOLDS = [.1]
+    # THRESHOLDS = [0.1,0.2,0.3,0.4,0.5]
+    # # THRESHOLDS = [.1]
 
 
     # for thresh in THRESHOLDS:
@@ -215,7 +217,7 @@ if __name__ == '__main__':
     #     optimizer = end2end._get_optimizer(model)
     #     loss_seg, loss_dec = end2end._get_loss(True), end2end._get_loss(False)    
     #     end2end.set_dec_gradient_multiplier(model, 0.0)
-    #     end2end.threshold_selection(model, device, True, False, True, 'VAL')
+    #     end2end.threshold_selection(model, device, False, False, True, 'VAL')
     #     end2end.eval(model, device, False, False, True,'TEST')
 
 

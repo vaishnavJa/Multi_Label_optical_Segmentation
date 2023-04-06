@@ -97,13 +97,13 @@ class Config:
             # self.VALIDATE_ON_TEST = True
             self.USE_BEST_MODEL = True
             self.ON_DEMAND_READ = True
-            NUM_CLASS = None 
+            self.NUM_CLASS = None 
             if not self.ON_DEMAND_READ:
                 print("Will use ON_DEMAND_READ even though it is set on False!")
         
         elif self.DATASET == 'PA_M':
-            self.INPUT_WIDTH = 3000
-            self.INPUT_HEIGHT = 1496
+            self.INPUT_WIDTH = 512
+            self.INPUT_HEIGHT = 256
             self.INPUT_CHANNELS = 3
 
             # self.VALIDATE_ON_TEST = True

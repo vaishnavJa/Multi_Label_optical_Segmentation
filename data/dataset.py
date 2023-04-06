@@ -95,7 +95,7 @@ class Dataset(torch.utils.data.Dataset):
                     seg_loss_mask = np.fliplr(seg_loss_mask)
 
             
-            print( seg_mask.shape,seg_loss_mask.shape) 
+            # print( seg_mask.shape,seg_loss_mask.shape) 
             image = self.to_tensor(img)
             seg_mask = self.to_tensor(self.downsize(seg_mask) ,True)
             
@@ -103,7 +103,7 @@ class Dataset(torch.utils.data.Dataset):
             #     y_val = torch.from_numpy(y_val)
             # print( seg_mask.shape,seg_loss_mask.shape)  
             if self.cfg.WEIGHTED_SEG_LOSS:
-                seg_loss_mask = self.to_tensor(self.downsize(seg_loss_mask, True))
+                seg_loss_mask = self.to_tensor(self.downsize(seg_loss_mask), True)
         # exit()
         self.counter = self.counter + 1
         # print(image)
@@ -118,16 +118,16 @@ class Dataset(torch.utils.data.Dataset):
     def read_img_resize(self, path, grayscale, resize_dim) -> np.ndarray:
 
         img = cv2.imread(path, cv2.IMREAD_GRAYSCALE if grayscale else cv2.IMREAD_COLOR)
-        # if resize_dim is not None:
-        #     img = cv2.resize(img, dsize=resize_dim)
+        if resize_dim is not None:
+            img = cv2.resize(img, dsize=resize_dim)
         img = np.array(img, dtype=np.float32) / 255.0
         return img
 
     def read_label_resize(self, path, resize_dim, dilate=None,y_val=np.zeros(12)) -> (np.ndarray, bool):
 
         if self.cfg.DATASET == 'PA_M':
-            # if resize_dim is not None:
-            #     mask = np.zeros((self.cfg.NUM_CLASS,*resize_dim[::-1]))
+            if resize_dim is not None:
+                mask = np.zeros((self.cfg.NUM_CLASS,*resize_dim[::-1]))
             # print(self.image_size)
             mask = np.zeros((self.cfg.NUM_CLASS,*self.image_size[::-1]))
             for i in np.where(np.array(y_val) == 1)[0]: 
@@ -139,8 +139,8 @@ class Dataset(torch.utils.data.Dataset):
                 lbl[lbl>10] = 255
                 if dilate is not None and dilate > 1:
                     lbl = cv2.dilate(lbl, np.ones((dilate, dilate)))
-                # if resize_dim is not None:
-                #     lbl = cv2.resize(lbl, dsize=resize_dim)           
+                if resize_dim is not None:
+                    lbl = cv2.resize(lbl, dsize=resize_dim)           
                 mask[i] = np.array((lbl / 255.0), dtype=np.float32)
             
             return mask, np.max(mask) > 0
@@ -151,8 +151,8 @@ class Dataset(torch.utils.data.Dataset):
             lbl[lbl>10] = 255
             if dilate is not None and dilate > 1:
                 lbl = cv2.dilate(lbl, np.ones((dilate, dilate)))
-            # if resize_dim is not None:
-            #     lbl = cv2.resize(lbl, dsize=resize_dim)
+            if resize_dim is not None:
+                lbl = cv2.resize(lbl, dsize=resize_dim)
             return np.array((lbl / 255.0), dtype=np.float32), np.max(lbl) > 0
 
     def to_tensor(self, x, is_Seg = False) -> torch.Tensor:
@@ -169,7 +169,6 @@ class Dataset(torch.utils.data.Dataset):
 
     def distance_transform(self, mask: np.ndarray, max_val: float, p: float,y_val = np.zeros(12)) -> np.ndarray:
         
-
         if self.cfg.DATASET == 'PA_M':
             h, w = mask.shape[1:]      
             dst_trf = np.zeros_like(mask)
@@ -207,12 +206,12 @@ class Dataset(torch.utils.data.Dataset):
 
                 dst_trf[mask == 0] = 1
         
-        print('seg_loss',dst_trf.shape) 
+        # print('seg_loss',dst_trf.shape) 
         return np.array(dst_trf, dtype=np.float32)
 
     def downsize(self, image: np.ndarray, downsize_factor: int = 8) -> np.ndarray:
         img_t = torch.from_numpy(np.expand_dims(image, 0 if len(image.shape) == 3 else (0, 1)).astype(np.float32))
-        print(downsize_factor)
+        # print(downsize_factor)
         img_t = torch.nn.ReflectionPad2d(padding=(downsize_factor))(img_t)
         image_np = torch.nn.AvgPool2d(kernel_size=2 * downsize_factor + 1, stride=downsize_factor)(img_t).detach().numpy()
         return image_np[0] if len(image.shape) == 3 else image_np[0, 0]
