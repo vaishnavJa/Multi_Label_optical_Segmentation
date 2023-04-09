@@ -89,23 +89,27 @@ def plot_sample(image_name, image, segmentation, label, save_dir, decision=None,
 
 SMOOTH = 1e-6
 
-def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor,threshold = 0.5):
+def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor,threshold = 0.5,reduction = 'none'):
     # You can comment out this line if you are passing tensors of equal shape
     # But if you are passing output from UNet or something it will most probably
     # be with the BATCH x 1 x H x W shape
     outputs = outputs.squeeze(0)  # BATCH x 1 x H x W => BATCH x H x W
     # print(outputs.shape,labels.shape)
-    outputs = labels.squeeze(0)  # BATCH x 1 x H x W => BATCH x H x W
+    labels = labels.squeeze(0)  # BATCH x 1 x H x W => BATCH x H x W
     # exit()
     outputs = outputs> threshold
     labels = labels > 0.5
-    intersection = (outputs & labels).float().sum((1, 2))  # Will be zero if Truth=0 or Prediction=0
-    union = (outputs | labels).float().sum((1, 2))         # Will be zzero if both are 0
+    if reduction != 'none':
+        intersection = (outputs & labels).float().sum() 
+        union = (outputs | labels).float().sum()
+    else:
+        intersection = (outputs & labels).float().sum((1, 2))  # Will be zero if Truth=0 or Prediction=0
+        union = (outputs | labels).float().sum((1, 2))         # Will be zzero if both are 0
     
     iou = (intersection + SMOOTH) / (union + SMOOTH) 
     # thresholded = torch.clamp(20 * (iou - 0.5), 0, 10).ceil() / 10  # This is equal to comparing with thresolds
     
-    return iou.mean()
+    return iou
 
 # def iou_numpy(outputs: torch.Tensor, labels: torch.Tensor,threshold = 0.5):
 #     # You can comment out this line if you are passing tensors of equal shape
@@ -137,7 +141,8 @@ def evaluate_metrics(samples, results_path, run_name, threshold = 0.5, prefix=''
 
     df = pd.DataFrame(
         data={'prediction': [','.join(str(round(i,2)) for i in j) for j in predictions],
-                'IOU':iou_metric,
+                # 'IOU':iou_metric,
+                'IOU':[','.join(str(round(i,2)) for i in j) for j in iou_metric],
                 # 'decision': [','.join(str(i) for i in j) for j in predictions],
                 'ground_truth': [','.join(str(i) for i in j) for j in labels],
                 'fscore' : fscore,

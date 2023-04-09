@@ -258,9 +258,10 @@ class End2End:
             prediction = nn.Sigmoid()(prediction)
 
             # if is_pos:
-            # iou_metric = utils.iou_pytorch(pred_seg,seg_mask,self.cfg.IOU_THRESHOLD).item()
-            tp, fp, fn, tn = get_stats(pred_seg,seg_mask.int(), mode='multilabel', threshold=self.cfg.IOU_THRESHOLD,num_classes=self.cfg.NUM_CLASS)
-            iou_metric = iou_score(tp, fp, fn, tn, reduction="micro").item()
+            iou_metric = utils.iou_pytorch(pred_seg,seg_mask,self.cfg.IOU_THRESHOLD,reduction='none').cpu().numpy()
+            # tp, fp, fn, tn = get_stats(pred_seg,seg_mask.int(), mode='multilabel', threshold=self.cfg.IOU_THRESHOLD,num_classes=self.cfg.NUM_CLASS)
+            # # iou_metric = iou_score(tp, fp, fn, tn, reduction="micro").item()
+            # iou_metric = iou_score(tp, fp, fn, tn, reduction="none").cpu().numpy()
             # iou_metric = 0
 
             prediction = prediction.detach().cpu().numpy()
@@ -282,7 +283,8 @@ class End2End:
             # predictions.append(prediction)
             # ground_truths.append(y_val)
 
-            res.append((prediction.reshape(-1),y_val, sample_name,iou_metric))
+            res.append((prediction.reshape(-1),y_val, sample_name,iou_metric.reshape(-1)))
+            # res.append((prediction.reshape(-1),y_val, sample_name,iou_metric))
             if not is_validation:
                 if save_images:
                     image = cv2.resize(np.transpose(image[0, :, :, :], (1, 2, 0)), dsize)
@@ -321,19 +323,20 @@ class End2End:
                     # else:
                     utils.plot_sample(sample_name, image, pred_label, ground_label, save_folder, decision=prediction, plot_seg=plot_seg,threshold=self.cfg.IOU_THRESHOLD)
 
-        iou_m = np.mean(np.array(res)[:,3])
+        
         if is_validation:
+            iou_m = np.mean(np.array(res)[:,3])
             # metrics = utils.get_metrics(np.array(ground_truths), np.array(predictions))
             # metrics2 = utils.get_metrics(np.array(true_seg).reshape(-1),np.array(predicted_seg).reshape(-1))
             # FP, FN, TP, TN = list(map(sum, [metrics["FP"], metrics["FN"], metrics["TP"], metrics["TN"]]))
-            self._log(f"VALIDATION || IOU={iou_m:f}")
+            # self._log(f"VALIDATION || IOU={iou_m:f}")
 
             return iou_m, 1.0
         else:
             # metrics2 = utils.get_metrics(np.array(true_seg).reshape(-1),np.array(predicted_seg).reshape(-1))
             # self._log(f"TEST || IOU_Thre={metrics2['best_thr']:f}")
             utils.evaluate_metrics(res, self.run_path, self.run_name,self.cfg.IOU_THRESHOLD, prefix)
-            self._log(f"TESTING || IOU={iou_m:f}")
+            # self._log(f"TESTING || IOU={iou_m:f}")
 
     def get_dec_gradient_multiplier(self):
         if self.cfg.GRADIENT_ADJUSTMENT:
