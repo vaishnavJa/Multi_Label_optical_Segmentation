@@ -96,6 +96,8 @@ class End2End:
 
         batch_size = self.cfg.BATCH_SIZE
         memory_fit = self.cfg.MEMORY_FIT  # Not supported yet for >1
+        class_weights =torch.FloatTensor([0.31,0.82,0.21,0.73,0.74,0.65,0.49,1.38,2.8,1.7,10.9,0.26])
+        class_weights = class_weights.view(1, 12, 1,1).expand(-1, -1,  self.cfg.INPUT_HEIGHT//8, self.cfg.INPUT_WIDTH//8)
 
         num_subiters = int(batch_size / memory_fit)
         total_loss = 0
@@ -125,10 +127,14 @@ class End2End:
             decision, output_seg_mask = model(images_)
 
             if is_segmented[sub_iter]:
+
+                loss_seg = criterion_seg(output_seg_mask, seg_masks_) * class_weights
+                
                 if self.cfg.WEIGHTED_SEG_LOSS:
-                    loss_seg = torch.mean(criterion_seg(output_seg_mask, seg_masks_) * seg_loss_masks_)
+                    loss_seg = torch.mean(loss_seg * seg_loss_masks_)
                 else:
-                    loss_seg = criterion_seg(output_seg_mask, seg_masks_)
+                    loss_seg = torch.mean(loss_seg)
+                    
                 if self.cfg.DATASET == 'PA_M':
                     loss_dec = criterion_dec(decision, y_val_)
                 else:
@@ -424,13 +430,12 @@ class End2End:
 
     def _get_loss(self, is_seg):
 
-        weights =torch.FloatTensor([0.31356206083020355,0.820629083313547,0.2107980011290341,0.7339111987020536,0.7472867264440693,0.6514384484762855,0.4943956951978027,1.3864826567965536,2.846285407790473,1.7375832302367287,10.989520881310732,0.26749263637354165])
-        # weights =torch.from_numpy(np.ones(12))
+        weights =torch.from_numpy(np.ones(12)) * 7
 
         if is_seg:
             weights = weights.view(1, 12, 1,1).expand(-1, -1,  self.cfg.INPUT_HEIGHT//8, self.cfg.INPUT_WIDTH//8)
-        reduction = "none" if self.cfg.WEIGHTED_SEG_LOSS and is_seg else "mean"
-        return nn.BCEWithLogitsLoss(pos_weight=weights,reduction=reduction).to(self._get_device())
+        # reduction = "none" if self.cfg.WEIGHTED_SEG_LOSS and is_seg else "mean"
+        return nn.BCEWithLogitsLoss(pos_weight=weights,reduction='none').to(self._get_device())
 
     def _get_device(self):
         return f"cuda:{self.cfg.GPU}"
