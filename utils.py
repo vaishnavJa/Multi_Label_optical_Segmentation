@@ -58,13 +58,14 @@ def plot_sample(image_name, image, segmentation, label, save_dir, decision=None,
     plt.subplot(1, 4, 3)
     plt.xticks([])
     plt.yticks([])
+    plt.imshow(segmentation)
     if decision is None:
         plt.title('Output')
     else:
         plt.title(f"Output: {np.argmax(decision):.5f}")
     # display max
     # vmax_value = max(1, np.max(segmentation))
-    plt.imshow(segmentation)
+    
 
     # plt.subplot(1, 4, 4)
     # plt.xticks([])
@@ -98,7 +99,7 @@ def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor,threshold = 0.5,redu
     labels = labels.squeeze(0)  # BATCH x 1 x H x W => BATCH x H x W
     # exit()
     outputs = outputs> threshold
-    labels = labels > 0.5
+    labels = labels > 0
     if reduction != 'none':
         intersection = (outputs & labels).float().sum() 
         union = (outputs | labels).float().sum()
@@ -106,7 +107,8 @@ def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor,threshold = 0.5,redu
         intersection = (outputs & labels).float().sum((1, 2))  # Will be zero if Truth=0 or Prediction=0
         union = (outputs | labels).float().sum((1, 2))         # Will be zzero if both are 0
     
-    iou = (intersection + SMOOTH) / (union + SMOOTH) 
+    iou = (intersection + SMOOTH) / (union + SMOOTH)
+    
     # thresholded = torch.clamp(20 * (iou - 0.5), 0, 10).ceil() / 10  # This is equal to comparing with thresolds
     
     return iou

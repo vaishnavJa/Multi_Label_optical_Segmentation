@@ -83,10 +83,10 @@ class End2End:
         test_loader = get_dataset("TEST", self.cfg)
         self.eval_model(device, model, test_loader, save_folder=self.outputs_path, save_images=save_images, is_validation=False, plot_seg=plot_seg, prefix=prefix)
 
-    def threshold_selection(self, model, device, save_images, plot_seg, reload_final,prefix = ''):
+    def threshold_selection(self, model, device, save_images, plot_seg, reload_final,prefix = '',dataset='VAL'):
         # print(model.volume_lr_multiplier_layer)
         self.reload_model(model, reload_final)
-        test_loader = get_dataset("VAL", self.cfg)
+        test_loader = get_dataset(dataset, self.cfg)
         # print(test_loader)
         self.eval_model(device, model, test_loader, save_folder=self.outputs_path, save_images=save_images, is_validation=False, plot_seg=plot_seg, prefix=prefix)
     
@@ -97,7 +97,7 @@ class End2End:
         batch_size = self.cfg.BATCH_SIZE
         memory_fit = self.cfg.MEMORY_FIT  # Not supported yet for >1
         class_weights =torch.FloatTensor([0.31,0.82,0.21,0.73,0.74,0.65,0.49,1.38,2.8,1.7,10.9,0.26])
-        class_weights = class_weights.view(1, 12, 1,1).expand(-1, -1,  self.cfg.INPUT_HEIGHT//8, self.cfg.INPUT_WIDTH//8)
+        class_weights = class_weights.view(1, 12, 1,1).expand(-1, -1,  self.cfg.INPUT_HEIGHT//8, self.cfg.INPUT_WIDTH//8).to(self._get_device())
 
         num_subiters = int(batch_size / memory_fit)
         total_loss = 0
@@ -136,9 +136,9 @@ class End2End:
                     loss_seg = torch.mean(loss_seg)
                     
                 if self.cfg.DATASET == 'PA_M':
-                    loss_dec = criterion_dec(decision, y_val_)
+                    loss_dec = torch.mean(criterion_dec(decision, y_val_))
                 else:
-                    loss_dec = criterion_dec(decision, is_pos_)
+                    loss_dec = torch.mean(criterion_dec(decision, is_pos_))
 
                 total_loss_seg += loss_seg.item()
                 total_loss_dec += loss_dec.item()
@@ -147,9 +147,9 @@ class End2End:
                 loss = weight_loss_seg * loss_seg + weight_loss_dec * loss_dec
             else:
                 if self.cfg.DATASET == 'PA_M':
-                    loss_dec = criterion_dec(decision, y_val_)
+                    loss_dec = torch.mean(criterion_dec(decision, y_val_))
                 else:
-                    loss_dec = criterion_dec(decision, is_pos_)
+                    loss_dec = torch.mean(criterion_dec(decision, is_pos_))
                 total_loss_dec += loss_dec.item()
 
                 total_correct += (decision > 0.0).item() == is_pos_.item()
@@ -393,19 +393,18 @@ class End2End:
         losses, validation_data = results
         ls, ld, l, iou,le  = map(list, zip(*losses))
         # plt.plot(le, l, label="Loss", color="red")
+        plt.figure(figsize=(10,10))
         plt.plot(le, ls, label="Loss seg",color = 'blue')
         plt.plot(le, ls, label="Loss dec",color = 'red')
         plt.plot(le, l, label="Loss total",color = 'yellow')
         plt.plot(le, iou, label="train IOU",color = 'green')
         # plt.plot(le, ld, label="Loss dec")
-        plt.ylim(bottom=0)
-        plt.grid()
-        plt.xlabel("Epochs")
         if self.cfg.VALIDATE:
             v_iou, v_e = map(list, zip(*validation_data))
             plt.twinx()
-            plt.plot(v_iou, v_e, label="test IOU", color="Green")
-            plt.ylim((0, 1))
+            plt.plot(v_e,v_iou,label="test IOU", color="brown")
+        plt.ylim((0, 1))
+        plt.xlabel("Epochs")
         plt.legend()
         plt.savefig(os.path.join(self.run_path, "loss_IOU"), dpi=200)
 
