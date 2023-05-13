@@ -56,6 +56,9 @@ def parse_args():
     parser.add_argument('--MEMORY_FIT', type=int, default=None, help="How many images can be fitted in GPU memory.")
     parser.add_argument('--SAVE_IMAGES', type=str2bool, default=None, help="Save test images or not.")
     parser.add_argument('--HYPERPARAM', type=str2bool, required=True,  default=False, help="Whether running optuna.")
+    parser.add_argument('--DEC_OUTSIZE', type=int, default=1, help="decision network output shape")
+    parser.add_argument('--SEG_OUTSIZE', type=int, default=1, help="segmentation network output shape.")
+    parser.add_argument('--SPLIT_LOCATION', type=str, default='', help="split location.")
 
     args = parser.parse_args()
 
@@ -90,16 +93,7 @@ if __name__ == '__main__':
     #     end2end.set_dec_gradient_multiplier(model, 0.0)
     #     end2end.eval(model, device, True, False, True)
             
-    """training model """
-    
-    # start = time.time()
-    # configuration = Config()
-    # configuration.merge_from_args(args)
-    # configuration.init_extra()
 
-    # end2end = End2End(cfg=configuration)
-    # end2end.train()
-    # print(f"\n\ntotal time = {time.time() - start}")
 
 
     """hyper param selection """
@@ -196,14 +190,25 @@ if __name__ == '__main__':
 
     # pd.read_csv('losses.csv')
 
+    """training model """
+    
+    # start = time.time()
+    # configuration = Config()
+    # configuration.merge_from_args(args)
+    # configuration.init_extra()
+
+    # end2end = End2End(cfg=configuration)
+    # end2end.train()
+    # print(f"\n\ntotal time = {time.time() - start}")
+
     """IOU threshold selection"""
 
     configuration = Config()
     configuration.merge_from_args(args)
     configuration.init_extra()
 
-    # THRESHOLDS = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9]
-    THRESHOLDS = [0.1]
+    THRESHOLDS = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8]
+    # THRESHOLDS = [0.8]
 
 
     for thresh in THRESHOLDS:
@@ -217,9 +222,12 @@ if __name__ == '__main__':
         optimizer = end2end._get_optimizer(model)
         loss_seg, loss_dec = end2end._get_loss(True), end2end._get_loss(False)    
         end2end.set_dec_gradient_multiplier(model, 0.0)
-        end2end.threshold_selection(model, device, True, False, True, 'VAL',"VAL")
-        # end2end.threshold_selection(model, device, False, False, True, 'TRAIN',"TRAIN")
-        # end2end.eval(model, device, False, False, True,'TEST_2')
+        end2end.threshold_selection(model, device, False, False, True, 'TEST',"TEST")
+        end2end.threshold_selection(model, device, False, False, True, 'VAL',"VAL")
+        end2end.threshold_selection(model, device, False, False, True, 'TRAIN',"TRAIN")
+        end2end.eval(model, device, False, False, True,'TEST_2')
+    
+    
 
 
 

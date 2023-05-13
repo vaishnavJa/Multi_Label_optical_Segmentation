@@ -83,12 +83,12 @@ class End2End:
         test_loader = get_dataset("TEST", self.cfg)
         self.eval_model(device, model, test_loader, save_folder=self.outputs_path, save_images=save_images, is_validation=False, plot_seg=plot_seg, prefix=prefix)
 
-    def threshold_selection(self, model, device, save_images, plot_seg, reload_final,prefix = '',dataset='VAL'):
+    def threshold_selection(self, model, device, save_images, plot_seg, reload_final,prefix = '',dataset='VAL',reduction = 'mean'):
         # print(model.volume_lr_multiplier_layer)
         self.reload_model(model, reload_final)
         test_loader = get_dataset(dataset, self.cfg)
         # print(test_loader)
-        self.eval_model(device, model, test_loader, save_folder=self.outputs_path, save_images=save_images, is_validation=False, plot_seg=plot_seg, prefix=prefix)
+        self.eval_model(device, model, test_loader, save_folder=self.outputs_path, save_images=save_images, is_validation=False, plot_seg=plot_seg, prefix=prefix,reduction=reduction)
     
     def training_iteration(self, data, device, model, criterion_seg, criterion_dec, optimizer, weight_loss_seg, weight_loss_dec,
                            tensorboard_writer, iter_index):
@@ -96,8 +96,9 @@ class End2End:
 
         batch_size = self.cfg.BATCH_SIZE
         memory_fit = self.cfg.MEMORY_FIT  # Not supported yet for >1
-        class_weights =torch.FloatTensor([0.31,0.82,0.21,0.73,0.74,0.65,0.49,1.38,2.8,1.7,10.9,0.26])
-        class_weights = class_weights.view(1, 12, 1,1).expand(-1, -1,  self.cfg.INPUT_HEIGHT//8, self.cfg.INPUT_WIDTH//8).to(self._get_device())
+        class_weights =torch.FloatTensor([0.82,0.21,0.73,0.74,0.65,0.49,1.38,2.8,1.7,10.9,0.26])
+        class_weights = torch.ones(self.cfg.SEG_OUTSIZE)
+        class_weights = class_weights.view(1, self.cfg.SEG_OUTSIZE, 1,1).expand(-1, -1,  self.cfg.INPUT_HEIGHT//8, self.cfg.INPUT_WIDTH//8).to(self._get_device())
 
         num_subiters = int(batch_size / memory_fit)
         total_loss = 0
@@ -117,7 +118,7 @@ class End2End:
                 seg_loss_masks_ = seg_loss_masks[sub_iter * memory_fit:(sub_iter + 1) * memory_fit, :, :, :].to(device)
             is_pos_ = seg_masks_.max().reshape((memory_fit, 1)).to(device)
             if self.cfg.DATASET == 'PA_M':
-                y_val_ = y_val.reshape((memory_fit, self.cfg.NUM_CLASS)).float().to(device)
+                y_val_ = y_val.reshape((memory_fit, self.cfg.DEC_OUTSIZE)).float().to(device)
 
             if tensorboard_writer is not None and iter_index % 100 == 0:
                 tensorboard_writer.add_image(f"{iter_index}/image", images_[0, :, :, :])
@@ -152,12 +153,12 @@ class End2End:
                     loss_dec = torch.mean(criterion_dec(decision, is_pos_))
                 total_loss_dec += loss_dec.item()
 
-                total_correct += (decision > 0.0).item() == is_pos_.item()
+                # total_correct += (decision > 0.0).item() == is_pos_.item()
+                total_correct += 1
                 loss = weight_loss_dec * loss_dec
             total_loss += loss.item()
 
-            tp, fp, fn, tn = get_stats(output_seg_mask,seg_masks_.int(), mode='multilabel', threshold=self.cfg.IOU_THRESHOLD,num_classes=self.cfg.NUM_CLASS)
-            iou_metric = iou_score(tp, fp, fn, tn, reduction="micro").item()
+            iou_metric = utils.iou_pytorch(output_seg_mask,seg_masks_,self.cfg.IOU_THRESHOLD,reduction='mean').item()
 
             # tp, fp, fn, tn = get_stats(output_seg_mask,seg_masks_, mode='multilabel', threshold=self.cfg.IOU_THRESHOLD)
             # iou_metric = iou_score(tp, fp, fn, tn, reduction="micro")
@@ -247,7 +248,7 @@ class End2End:
 
         return losses, validation_data
 
-    def eval_model(self, device, model, eval_loader, save_folder, save_images, is_validation, plot_seg, prefix=''):
+    def eval_model(self, device, model, eval_loader, save_folder, save_images, is_validation, plot_seg, prefix='',reduction = 'mean'):
         model.eval()
 
         dsize = self.cfg.INPUT_WIDTH, self.cfg.INPUT_HEIGHT
@@ -257,7 +258,7 @@ class End2End:
         # print('inside',eval_loader)
         for data_point in eval_loader:
             image, seg_mask, seg_loss_mask, _, sample_name,y_val = data_point
-            image, seg_mask, y_val = image.to(device), seg_mask.to(device),y_val.reshape(1,self.cfg.NUM_CLASS)
+            image, seg_mask, y_val = image.to(device), seg_mask.to(device),y_val.reshape(1,self.cfg.DEC_OUTSIZE)
             # is_pos = (seg_mask.max() > 0).reshape((1, 1)).to(device).item()
             prediction, pred_seg = model(image)
             pred_seg = nn.Sigmoid()(pred_seg)
@@ -265,6 +266,7 @@ class End2End:
 
             # if is_pos:
             iou_metric = utils.iou_pytorch(pred_seg,seg_mask,self.cfg.IOU_THRESHOLD,reduction='none').cpu().numpy()
+            iou_metric_mean = utils.iou_pytorch(pred_seg,seg_mask,self.cfg.IOU_THRESHOLD,reduction='mean').cpu().numpy()
             # tp, fp, fn, tn = get_stats(pred_seg,seg_mask.int(), mode='multilabel', threshold=self.cfg.IOU_THRESHOLD,num_classes=self.cfg.NUM_CLASS)
             # # iou_metric = iou_score(tp, fp, fn, tn, reduction="micro").item()
             # iou_metric = iou_score(tp, fp, fn, tn, reduction="none").cpu().numpy()
@@ -289,7 +291,7 @@ class End2End:
             # predictions.append(prediction)
             # ground_truths.append(y_val)
 
-            res.append((prediction.reshape(-1),y_val, sample_name,iou_metric.reshape(-1)))
+            res.append((prediction.reshape(-1),y_val, sample_name,iou_metric_mean,iou_metric.reshape(-1)))
             # res.append((prediction.reshape(-1),y_val, sample_name,iou_metric))
             if not is_validation:
                 if save_images:
@@ -317,32 +319,15 @@ class End2End:
                     ground_label = cv2.resize(ground_label, seg_mask.shape[::-1][1:],interpolation = cv2.INTER_NEAREST).astype(np.uint8)
                     # ground_label = cv2.cvtColor(ground_label, cv2.COLOR_RGB2BGR)  
                     pred_label = cv2.resize(pred_label,seg_mask.shape[::-1][1:],interpolation = cv2.INTER_NEAREST).astype(np.uint8) 
-                    # pred_label = cv2.cvtColor(pred_label, cv2.COLOR_RGB2BGR) 
-                    # pred_seg = np.where(pred_seg < 0.5 ,0,pred_seg)
 
-                    # pred_label = np.transpose(seg_mask_img, (1, 2, 0))*np.array([[0,0,0]])
-
-                                        
-                    # if self.cfg.WEIGHTED_SEG_LOSS:
-                    #     seg_loss_mask = cv2.resize(seg_loss_mask[0, 0, :, :], dsize)
-                    #     utils.plot_sample(sample_name, image, pred_seg, seg_loss_mask, save_folder, decision=prediction, plot_seg=plot_seg,threshold=self.cfg.IOU_THRESHOLD)
-                    # else:
                     utils.plot_sample(sample_name, image, pred_label, ground_label, save_folder, decision=prediction, plot_seg=plot_seg,threshold=self.cfg.IOU_THRESHOLD)
 
         
         if is_validation:
             iou_m = np.mean(np.array(res)[:,3])
-            # metrics = utils.get_metrics(np.array(ground_truths), np.array(predictions))
-            # metrics2 = utils.get_metrics(np.array(true_seg).reshape(-1),np.array(predicted_seg).reshape(-1))
-            # FP, FN, TP, TN = list(map(sum, [metrics["FP"], metrics["FN"], metrics["TP"], metrics["TN"]]))
-            # self._log(f"VALIDATION || IOU={iou_m:f}")
-
             return iou_m, 1.0
         else:
-            # metrics2 = utils.get_metrics(np.array(true_seg).reshape(-1),np.array(predicted_seg).reshape(-1))
-            # self._log(f"TEST || IOU_Thre={metrics2['best_thr']:f}")
             utils.evaluate_metrics(res, self.run_path, self.run_name,self.cfg.IOU_THRESHOLD, prefix)
-            # self._log(f"TESTING || IOU={iou_m:f}")
 
     def get_dec_gradient_multiplier(self):
         if self.cfg.GRADIENT_ADJUSTMENT:
@@ -393,16 +378,16 @@ class End2End:
         losses, validation_data = results
         ls, ld, l, iou,le  = map(list, zip(*losses))
         # plt.plot(le, l, label="Loss", color="red")
-        plt.figure(figsize=(10,10))
+        plt.figure(figsize=(15,15))
         plt.plot(le, ls, label="Loss seg",color = 'blue')
-        plt.plot(le, ls, label="Loss dec",color = 'red')
+        plt.plot(le, ld, label="Loss dec",color = 'red')
         plt.plot(le, l, label="Loss total",color = 'yellow')
         plt.plot(le, iou, label="train IOU",color = 'green')
         # plt.plot(le, ld, label="Loss dec")
         if self.cfg.VALIDATE:
             v_iou, v_e = map(list, zip(*validation_data))
-            plt.twinx()
             plt.plot(v_e,v_iou,label="test IOU", color="brown")
+
         plt.ylim((0, 1))
         plt.xlabel("Epochs")
         plt.legend()
@@ -429,10 +414,11 @@ class End2End:
 
     def _get_loss(self, is_seg):
 
-        weights =torch.from_numpy(np.ones(12)) * 7
+        weights =torch.from_numpy(np.ones(self.cfg.DEC_OUTSIZE)) * 7
 
         if is_seg:
-            weights = weights.view(1, 12, 1,1).expand(-1, -1,  self.cfg.INPUT_HEIGHT//8, self.cfg.INPUT_WIDTH//8)
+            weights =torch.from_numpy(np.ones(self.cfg.SEG_OUTSIZE)) * 7
+            weights = weights.view(1, self.cfg.SEG_OUTSIZE, 1,1).expand(-1, -1,  self.cfg.INPUT_HEIGHT//8, self.cfg.INPUT_WIDTH//8)
         # reduction = "none" if self.cfg.WEIGHTED_SEG_LOSS and is_seg else "mean"
         return nn.BCEWithLogitsLoss(pos_weight=weights,reduction='none').to(self._get_device())
 
@@ -460,7 +446,7 @@ class End2End:
         list(map(utils.create_folder, [self.run_path, self.model_path, self.outputs_path, ]))
 
     def _get_model(self):
-        seg_net = SegDecNet(self._get_device(), self.cfg.INPUT_WIDTH, self.cfg.INPUT_HEIGHT, self.cfg.INPUT_CHANNELS, self.cfg.NUM_CLASS)
+        seg_net = SegDecNet(self._get_device(), self.cfg.INPUT_WIDTH, self.cfg.INPUT_HEIGHT, self.cfg.INPUT_CHANNELS, self.cfg.SEG_OUTSIZE,self.cfg.DEC_OUTSIZE, self.cfg.DATASET)
         return seg_net
 
     def print_run_params(self):

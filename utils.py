@@ -108,6 +108,7 @@ def iou_pytorch(outputs: torch.Tensor, labels: torch.Tensor,threshold = 0.5,redu
         union = (outputs | labels).float().sum((1, 2))         # Will be zzero if both are 0
     
     iou = (intersection + SMOOTH) / (union + SMOOTH)
+    # print(intersection.item(),union.item(),iou.item())
     
     # thresholded = torch.clamp(20 * (iou - 0.5), 0, 10).ceil() / 10  # This is equal to comparing with thresolds
     
@@ -136,15 +137,16 @@ def evaluate_metrics(samples, results_path, run_name, threshold = 0.5, prefix=''
     img_names = samples[:, 2]
     predictions = samples[:, 0]
     labels = samples[:, 1]
-    iou_metric = samples[:,3]
+    iou_metric_mean = samples[:,3]
+    iou_metric = samples[:,4]
     fscore = [f1_score(y_true,y_pred>threshold,average='weighted') for y_true,y_pred in zip(labels,predictions)] 
 
     # metrics = get_metrics(labels, predictions)
 
     df = pd.DataFrame(
         data={'prediction': [','.join(str(round(i,2)) for i in j) for j in predictions],
-                # 'IOU':iou_metric,
-                'IOU':[','.join(str(round(i,2)) for i in j) for j in iou_metric],
+                'IOU':iou_metric_mean,
+                'IOU_label':[','.join(str(round(i,2)) for i in j) for j in iou_metric],
                 # 'decision': [','.join(str(i) for i in j) for j in predictions],
                 'ground_truth': [','.join(str(i) for i in j) for j in labels],
                 'fscore' : fscore,

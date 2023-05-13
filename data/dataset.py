@@ -45,7 +45,7 @@ class Dataset(torch.utils.data.Dataset):
 
         
 
-        if self.kind == 'TRAIN':
+        if self.kind == 'TRAIN' and self.cfg.SEG_OUTSIZE != 13:
             if index >= self.num_pos:
                 ix = index % self.num_pos
                 ix = self.neg_imgs_permutation[ix]
@@ -63,11 +63,15 @@ class Dataset(torch.utils.data.Dataset):
                 ix = index - self.num_neg
                 item = self.pos_samples[ix]
 
+
         if self.cfg.DATASET == 'PA_M':
             image, seg_mask, seg_loss_mask, is_segmented, image_path, seg_mask_path, sample_name,y_val = item
         else:
             image, seg_mask, seg_loss_mask, is_segmented, image_path, seg_mask_path, sample_name = item
             y_val = None
+        
+        # if is_segmented:
+        #     print(y_val)
 
         if self.cfg.ON_DEMAND_READ:  # STEEL only so far
             seg_loss_mask = 1
@@ -75,9 +79,9 @@ class Dataset(torch.utils.data.Dataset):
                 raise Exception('For ON_DEMAND_READ image and seg_mask paths must be set in read_contents')
             img = self.read_img_resize(image_path, self.grayscale, self.image_size)
             if seg_mask_path is None:  # good sample
-                seg_mask = np.zeros((self.cfg.NUM_CLASS,*self.image_size[::-1]))
+                seg_mask = np.zeros((self.cfg.SEG_OUTSIZE,*self.image_size[::-1]))
             elif isinstance(seg_mask_path, list):
-                seg_mask = self.rle_to_mask(seg_mask_path, self.image_size)
+                seg_mask = self.rle_to_mask(seg_mask_path, self.image_size,self.cfg.DILATE,y_val)
             else:
                 seg_mask, _ = self.read_label_resize(seg_mask_path, self.image_size,self.cfg.DILATE,y_val)
                 # cv2.imshow('show',seg_mask)
@@ -106,6 +110,7 @@ class Dataset(torch.utils.data.Dataset):
                 seg_loss_mask = self.to_tensor(self.downsize(seg_loss_mask), True)
         # exit()
         self.counter = self.counter + 1
+        
         # print(image)
         return image, seg_mask, seg_loss_mask, is_segmented, sample_name,y_val
 
@@ -127,23 +132,18 @@ class Dataset(torch.utils.data.Dataset):
 
         if self.cfg.DATASET == 'PA_M':
             if resize_dim is not None:
-                mask = np.zeros((self.cfg.NUM_CLASS,*resize_dim[::-1]))
+                mask = np.zeros((self.cfg.SEG_OUTSIZE,*resize_dim[::-1]))
             # print(self.image_size)
-            mask = np.zeros((self.cfg.NUM_CLASS,*self.image_size[::-1]))
-            for i in np.where(np.array(y_val) == 1)[0]: 
-                j = i+1
-                if i >= 2:
-                    j = i+2
-                path2 = f'{path[:-4]}_{j}.jpg'
+            mask = np.zeros((self.cfg.SEG_OUTSIZE,*self.image_size[::-1]))
+            for path2 in path:
                 lbl = cv2.imread(path2, cv2.IMREAD_GRAYSCALE)
                 lbl[lbl>10] = 255
                 if dilate is not None and dilate > 1:
                     lbl = cv2.dilate(lbl, np.ones((dilate, dilate)))
                 if resize_dim is not None:
-                    lbl = cv2.resize(lbl, dsize=resize_dim)           
-                mask[i] = np.array((lbl / 255.0), dtype=np.float32)
-            
-            return mask, np.max(mask) > 0
+                    lbl = cv2.resize(lbl, dsize=resize_dim)     
+                label = strip_class(path2)    
+                mask[label-1] = np.array((lbl / 255.0), dtype=np.float32)
         
         else :
             path = path[:-4]+'.jpg'
@@ -216,16 +216,40 @@ class Dataset(torch.utils.data.Dataset):
         image_np = torch.nn.AvgPool2d(kernel_size=2 * downsize_factor + 1, stride=downsize_factor)(img_t).detach().numpy()
         return image_np[0] if len(image.shape) == 3 else image_np[0, 0]
 
-    def rle_to_mask(self, rle, image_size):
-        if len(rle) % 2 != 0:
-            raise Exception('Suspicious')
+    def rle_to_mask(self, rle, image_size,dilate=0,y_val = np.ones(13)):
+        
+        if self.cfg.DATASET != 'PA_M':
+        
+            if len(rle) % 2 != 0:
+                raise Exception('Suspicious')
 
-        w, h = image_size
-        mask_label = np.zeros(w * h, dtype=np.float32)
+            w, h = image_size
+            mask_label = np.zeros(w * h, dtype=np.float32)
 
-        positions = rle[0::2]
-        length = rle[1::2]
-        for pos, le in zip(positions, length):
-            mask_label[pos - 1:pos + le - 1] = 1
-        mask = np.reshape(mask_label, (h, w), order='F').astype(np.uint8)
+            positions = rle[0::2]
+            length = rle[1::2]
+            for pos, le in zip(positions, length):
+                mask_label[pos - 1:pos + le - 1] = 1
+            mask = np.reshape(mask_label, (h, w), order='F').astype(np.uint8)
+
+        else:
+            if image_size is not None:
+                mask = np.zeros((self.cfg.SEG_OUTSIZE,*image_size[::-1]))
+            # print(self.image_size)
+            mask = np.zeros((self.cfg.SEG_OUTSIZE,*self.image_size[::-1]))
+            for path2 in rle:
+                lbl = cv2.imread(path2, cv2.IMREAD_GRAYSCALE)
+                lbl[lbl>10] = 255
+                if dilate is not None and dilate > 1:
+                    lbl = cv2.dilate(lbl, np.ones((dilate, dilate)))
+                if image_size is not None:
+                    lbl = cv2.resize(lbl, dsize=image_size)     
+                label = strip_class(path2)    
+                mask[label-1] = np.array((lbl / 255.0), dtype=np.float32)
+        
         return mask
+    
+def strip_class(fn):
+    seg_name = fn.split('/')[-1]
+    return int(seg_name[:-4].split('_')[-1])
+    

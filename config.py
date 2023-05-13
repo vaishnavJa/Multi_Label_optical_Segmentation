@@ -46,6 +46,9 @@ class Config:
     INPUT_CHANNELS = None
     NUM_CLASS = None 
 
+    SEG_OUTSIZE = 1
+    DEC_OUTSIZE = 1
+
     IOU_THRESHOLD = 0.5
 
     def init_extra(self):
@@ -139,6 +142,9 @@ class Config:
         self.FREQUENCY_SAMPLING = args.FREQUENCY_SAMPLING
         self.NUM_SEGMENTED = args.NUM_SEGMENTED
         self.HYPERPARAM = args.HYPERPARAM
+        self.SEG_OUTSIZE = args.SEG_OUTSIZE
+        self.DEC_OUTSIZE = args.DEC_OUTSIZE
+        self.SPLIT_LOCATION = args.SPLIT_LOCATION
 
         if args.FOLD is not None: self.FOLD = args.FOLD
         if args.TRAIN_NUM is not None: self.TRAIN_NUM = args.TRAIN_NUM
@@ -184,6 +190,10 @@ class Config:
             "INPUT_CHANNELS": self.INPUT_CHANNELS,
             "SAVE_IMAGES": self.SAVE_IMAGES,
             "DILATE": self.DILATE,
+            "HYPERPARAM" : self.HYPERPARAM,
+            "SEG_OUTSIZE" : self.SEG_OUTSIZE,
+            "DEC_OUTSIZE" : self.DEC_OUTSIZE,
+            "SPLIT_LOCATION" : self.SPLIT_LOCATION
         }
         return params
 

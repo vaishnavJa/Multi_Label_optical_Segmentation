@@ -52,14 +52,16 @@ class FeatureNorm(nn.Module):
 
 
 class SegDecNet(nn.Module):
-    def __init__(self, device, input_width, input_height, input_channels,num_class=1):
+    def __init__(self, device, input_width, input_height, input_channels,seg_outsize= 1,dec_outsize = 1,dataset = 'PA_M'):
         super(SegDecNet, self).__init__()
         if input_width % 8 != 0 or input_height % 8 != 0:
             raise Exception(f"Input size must be divisible by 8! width={input_width}, height={input_height}")
         self.input_width = input_width
         self.input_height = input_height
         self.input_channels = input_channels
-        self.num_class = num_class
+        self.dataset = dataset
+        self.seg_num_class = seg_outsize
+        self.dec_num_class = dec_outsize
         self.volume = nn.Sequential(_conv_block(self.input_channels, 32, 5, 2),
                                     # _conv_block(32, 32, 5, 2), # Has been accidentally left out and remained the same since then
                                     nn.MaxPool2d(2),
@@ -75,11 +77,11 @@ class SegDecNet(nn.Module):
                                     _conv_block(64, 1024, 15, 7))
 
         self.seg_mask = nn.Sequential(
-            Conv2d_init(in_channels=1024, out_channels=self.num_class, kernel_size=1, padding=0, bias=False),
-            FeatureNorm(num_features=1, eps=0.001, include_bias=False)) #here
+            Conv2d_init(in_channels=1024, out_channels= self.seg_num_class, kernel_size=1, padding=0, bias=False),
+            FeatureNorm(num_features=self.seg_num_class, eps=0.001, include_bias=False)) #here
 
         self.extractor = nn.Sequential(nn.MaxPool2d(kernel_size=2),
-                                       _conv_block(in_chanels=1024+self.num_class, out_chanels=8, kernel_size=5, padding=2),
+                                       _conv_block(in_chanels=1024+self.seg_num_class, out_chanels=8, kernel_size=5, padding=2),
                                        nn.MaxPool2d(kernel_size=2),
                                        _conv_block(in_chanels=8, out_chanels=16, kernel_size=5, padding=2),
                                        nn.MaxPool2d(kernel_size=2),
@@ -90,7 +92,7 @@ class SegDecNet(nn.Module):
         self.global_max_pool_seg = nn.MaxPool2d(kernel_size=(self.input_height / 8, self.input_width / 8))
         self.global_avg_pool_seg = nn.AvgPool2d(kernel_size=(self.input_height / 8, self.input_width / 8))
 
-        self.fc = nn.Linear(in_features=64 + 2*self.num_class, out_features=self.num_class)
+        self.fc = nn.Linear(in_features=64 + 2*self.seg_num_class, out_features=self.dec_num_class)
 
         self.volume_lr_multiplier_layer = GradientMultiplyLayer().apply
         self.glob_max_lr_multiplier_layer = GradientMultiplyLayer().apply
