@@ -68,7 +68,7 @@ class Dataset(torch.utils.data.Dataset):
             image, seg_mask, seg_loss_mask, is_segmented, image_path, seg_mask_path, sample_name,y_val = item
         else:
             image, seg_mask, seg_loss_mask, is_segmented, image_path, seg_mask_path, sample_name = item
-            y_val = None
+            y_val = np.int32([is_segmented])
         
         # if is_segmented:
         #     print(y_val)
@@ -92,26 +92,30 @@ class Dataset(torch.utils.data.Dataset):
                 else:
                     seg_loss_mask = self.distance_transform(seg_mask, self.cfg.WEIGHTED_SEG_LOSS_MAX, self.cfg.WEIGHTED_SEG_LOSS_P,y_val)
 
-            if np.random.rand() > 0.5:
-                img = img[:, ::-1, :]
-                seg_mask = seg_mask[:, :, ::-1]
-                if self.cfg.WEIGHTED_SEG_LOSS:
-                    seg_loss_mask = np.fliplr(seg_loss_mask)
+            if self.kind == 'Train':
+                
+                if np.random.rand() > 0.5:
+                    img = img[:, ::-1, :]
+                    seg_mask = seg_mask[:, :, ::-1]
+                    if self.cfg.WEIGHTED_SEG_LOSS:
+                        seg_loss_mask = np.fliplr(seg_loss_mask)
 
             
             # print( seg_mask.shape,seg_loss_mask.shape) 
             image = self.to_tensor(img)
-            seg_mask = self.to_tensor(self.downsize(seg_mask) ,True)
+            seg_mask = self.to_tensor(self.downsize(seg_mask,self.cfg.DOWN_FACTOR) ,True)
+            # seg_mask = self.to_tensor(seg_mask ,True)
             
             # if self.cfg.DATASET == 'PA_M':
             #     y_val = torch.from_numpy(y_val)
             # print( seg_mask.shape,seg_loss_mask.shape)  
             if self.cfg.WEIGHTED_SEG_LOSS:
-                seg_loss_mask = self.to_tensor(self.downsize(seg_loss_mask), True)
+                seg_loss_mask = self.to_tensor(self.downsize(seg_loss_mask,self.cfg.DOWN_FACTOR), True)
+                # seg_loss_mask = self.to_tensor(seg_loss_mask, True)
         # exit()
         self.counter = self.counter + 1
         
-        # print(image)
+        # print(image.shape,seg_mask.shape,seg_loss_mask.shape,is_segmented,sample_name,y_val)
         return image, seg_mask, seg_loss_mask, is_segmented, sample_name,y_val
 
     def __len__(self):
@@ -144,9 +148,10 @@ class Dataset(torch.utils.data.Dataset):
                     lbl = cv2.resize(lbl, dsize=resize_dim)     
                 label = strip_class(path2)    
                 mask[label-1] = np.array((lbl / 255.0), dtype=np.float32)
+
+            return mask, np.max(mask) > 0
         
         else :
-            path = path[:-4]+'.jpg'
             lbl = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
             lbl[lbl>10] = 255
             if dilate is not None and dilate > 1:
@@ -173,8 +178,11 @@ class Dataset(torch.utils.data.Dataset):
             h, w = mask.shape[1:]      
             dst_trf = np.zeros_like(mask)
 
-            for i in np.where(np.array(y_val) == 1)[0]:
-            
+            for i in np.where(np.array(mask.sum((1,2))) > 0)[0]:
+                
+                if i in [0,1,2] :
+                    # skipping embossing classes
+                    continue 
                 num_labels, labels = cv2.connectedComponents((mask[i] * 255.0).astype(np.uint8), connectivity=8)
                 for idx in range(1, num_labels):
                     mask_roi= np.zeros((h, w))
@@ -210,6 +218,8 @@ class Dataset(torch.utils.data.Dataset):
         return np.array(dst_trf, dtype=np.float32)
 
     def downsize(self, image: np.ndarray, downsize_factor: int = 8) -> np.ndarray:
+        if downsize_factor <= 1:
+            return image
         img_t = torch.from_numpy(np.expand_dims(image, 0 if len(image.shape) == 3 else (0, 1)).astype(np.float32))
         # print(downsize_factor)
         img_t = torch.nn.ReflectionPad2d(padding=(downsize_factor))(img_t)

@@ -2,6 +2,7 @@ class Config:
     GPU = None
 
     RUN_NAME = None
+    trial = None
 
     DATASET = None  # KSDD, DAGM, STEEL, KSDD2
     DATASET_PATH = None
@@ -31,7 +32,7 @@ class Config:
 
     VALIDATE = True
     VALIDATE_ON_TEST = True
-    VALIDATION_N_EPOCHS = 5
+    VALIDATION_N_EPOCHS = 2
     USE_BEST_MODEL = False
 
     ON_DEMAND_READ = False
@@ -48,6 +49,7 @@ class Config:
 
     SEG_OUTSIZE = 1
     DEC_OUTSIZE = 1
+    DOWN_FACTOR = 8
 
     IOU_THRESHOLD = 0.5
 
@@ -108,12 +110,12 @@ class Config:
             self.INPUT_WIDTH = 512
             self.INPUT_HEIGHT = 256
             self.INPUT_CHANNELS = 3
-
             # self.VALIDATE_ON_TEST = True
             self.USE_BEST_MODEL = True
-            self.ON_DEMAND_READ = True
             self.NUM_CLASS = 12 
+            self.trail = None
             if not self.ON_DEMAND_READ:
+                self.ON_DEMAND_READ = True
                 print("Will use ON_DEMAND_READ even though it is set on False!")
                 
         elif self.DATASET == 'KSDD2':
@@ -145,6 +147,9 @@ class Config:
         self.SEG_OUTSIZE = args.SEG_OUTSIZE
         self.DEC_OUTSIZE = args.DEC_OUTSIZE
         self.SPLIT_LOCATION = args.SPLIT_LOCATION
+        self.MULTISEG = args.MULTISEG
+        self.MULTIDEC = args.MULTIDEC
+        self.CLASSWEIGHTS = args.CLASSWEIGHTS
 
         if args.FOLD is not None: self.FOLD = args.FOLD
         if args.TRAIN_NUM is not None: self.TRAIN_NUM = args.TRAIN_NUM
@@ -158,6 +163,7 @@ class Config:
         if args.MEMORY_FIT is not None: self.MEMORY_FIT = args.MEMORY_FIT
         if args.SAVE_IMAGES is not None: self.SAVE_IMAGES = args.SAVE_IMAGES
         if args.DILATE is not None: self.DILATE = args.DILATE
+        if args.DOWN_FACTOR is not None: self.DOWN_FACTOR = args.DOWN_FACTOR
 
     def get_as_dict(self):
         params = {

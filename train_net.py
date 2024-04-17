@@ -58,7 +58,11 @@ def parse_args():
     parser.add_argument('--HYPERPARAM', type=str2bool, required=True,  default=False, help="Whether running optuna.")
     parser.add_argument('--DEC_OUTSIZE', type=int, default=1, help="decision network output shape")
     parser.add_argument('--SEG_OUTSIZE', type=int, default=1, help="segmentation network output shape.")
+    parser.add_argument('--DOWN_FACTOR', type=int, default=8, help="model dependent segmentation size reduction factor.")
     parser.add_argument('--SPLIT_LOCATION', type=str, default='', help="split location.")
+    parser.add_argument('--MULTISEG', type=str, default=False, help="split location.")
+    parser.add_argument('--MULTIDEC', type=str, default=False, help="split location.")
+    parser.add_argument('--CLASSWEIGHTS', type=str, default=False, help="split location.")
 
     args = parser.parse_args()
 
@@ -98,134 +102,127 @@ if __name__ == '__main__':
 
     """hyper param selection """
 
-    # def objective(trail):
-
-    #     vars(args)['DILATE'] = trail.suggest_int('DILATE',1,17)
-    #     # vars(args)['EPOCHS'] = trail.suggest_int('EPOCHS',50,150)
-    #     vars(args)["LEARNING_RATE"] = trail.suggest_float("LEARNING_RATE",0.0001,1.5)
-    #     vars(args)["DELTA_CLS_LOSS"] = trail.suggest_float("DELTA_CLS_LOSS",0,1)
-    #     # vars(args)["WEIGHTED_SEG_LOSS"] = trail.suggest_categorical("WEIGHTED_SEG_LOSS", [True, False])
-    #     # if vars(args)["WEIGHTED_SEG_LOSS"]:
-    #     #     vars(args)["WEIGHTED_SEG_LOSS"] = trail.suggest_int("WEIGHTED_SEG_LOSS_P",0,1)
-    #     #     vars(args)["WEIGHTED_SEG_LOSS"] = trail.suggest_int("WEIGHTED_SEG_LOSS_MAX",0,1)
-        
-    #     vars(args)["DYN_BALANCED_LOSS"] = trail.suggest_categorical("DYN_BALANCED_LOSS", [True, False])
-    #     vars(args)["GRADIENT_ADJUSTMENT"] = trail.suggest_categorical("GRADIENT_ADJUSTMENT", [True, False])
-    #     vars(args)["FREQUENCY_SAMPLING"] = trail.suggest_categorical("FREQUENCY_SAMPLING", [True, False])
-        
-    #     # args.RESULTS_PATH = os.path.join("E:/AI/FAPS/code/Mixedsupervision/results",param,str(val))
-    #     configuration = Config()
-    #     configuration.merge_from_args(args)
-    #     configuration.init_extra()
-
-    #     # configuration.IOU_THRESHOLD = 0.5
-    #     end2end = End2End(cfg=configuration)
-    #     loss_seg, loss_dec, total_loss, iou, _ = end2end.train(trail)
-    #     return iou
     
 
-    # study = optuna.create_study(direction='maximize')
-    # joblib.dump(study, "studybefore.pkl")
-    # study.optimize(objective, n_trials=20)
-    # joblib.dump(study, "study.pkl")
+    if args.HYPERPARAM:
 
-   
+        def objective(trial):
 
-
-    """hyper param selection """
-    # RUN_NAME = args.RUN_NAME
-    # params = ["WEIGHTED_SEG_LOSS_P"]
-    # param_vals = {  
-    #                 # "WEIGHTED_SEG_LOSS":[False],
-    #                 # "DELTA_CLS_LOSS":[0.5,1],
-    #                 "DYN_BALANCED_LOSS":[False],
-    #                 # "GRADIENT_ADJUSTMENT":[False]
-    #                 # "WEIGHTED_SEG_LOSS_MAX":[2,3,4]
-    #              }
-    # for param in param_vals.keys():
-    #     for val in param_vals[param]:
+            # vars(args)['DILATE'] = trail.suggest_int('DILATE',1,17)
+            vars(args)['EPOCHS'] = trial.suggest_int('EPOCHS',70,100)
+            vars(args)["LEARNING_RATE"] = trial.suggest_float("LEARNING_RATE",0.1,1.5)
+            vars(args)["DELTA_CLS_LOSS"] = trial.suggest_float("DELTA_CLS_LOSS",0,0.3)
+            vars(args)["WEIGHTED_SEG_LOSS"] = trial.suggest_categorical("WEIGHTED_SEG_LOSS", [True, False])
+            # if vars(args)["WEIGHTED_SEG_LOSS"]:
+            #     vars(args)["WEIGHTED_SEG_LOSS"] = trail.suggest_int("WEIGHTED_SEG_LOSS_P",1,3)
+            #     vars(args)["WEIGHTED_SEG_LOSS"] = trail.suggest_int("WEIGHTED_SEG_LOSS_MAX",1,3)
+            vars(args)["DYN_BALANCED_LOSS"] = trial.suggest_categorical("DYN_BALANCED_LOSS", [True, False])
+            vars(args)["GRADIENT_ADJUSTMENT"] = trial.suggest_categorical("GRADIENT_ADJUSTMENT", [True, False])
+            # vars(args)["MULTISEG"] = trial.suggest_categorical("MULTISEG", [True, False])
+            # vars(args)["MULTIDEC"] = trial.suggest_categorical("MULTIDEC", [True, False])
+            # vars(args)["CLASSWEIGHTS"] = trial.suggest_categorical("CLASSWEIGHTS", [True, False])
+            # vars(args)["FREQUENCY_SAMPLING"] = trail.suggest_categorical("FREQUENCY_SAMPLING", [True])
             
-    #         vars(args)[param] = val
-    #         # if param == "WEIGHTED_SEG_LOSS_P":
-    #             # vars(args)["WEIGHTED_SEG_LOSS_MAX"] = val+1
-    #         print("{}/{}/{}".format(RUN_NAME,param,val))
-    #         vars(args)['RUN_NAME'] = "{}/{}/{}".format(args.RUN_NAME,param,val)
-    #         # args.RESULTS_PATH = os.path.join("E:/AI/FAPS/code/Mixedsupervision/results",param,str(val))
-    #         configuration = Config()
-    #         configuration.merge_from_args(args)
-    #         configuration.init_extra()
+            # args.RESULTS_PATH = os.path.join("E:/AI/FAPS/code/Mixedsupervision/results",param,str(val))
+            configuration = Config()
+            configuration.merge_from_args(args)
+            configuration.init_extra()
+            configuration.trial = trial
 
-    #         # configuration.IOU_THRESHOLD = 0.5
-    #         end2end = End2End(cfg=configuration)
-    #         end2end.train()
+            # configuration.IOU_THRESHOLD = 0.5
+            end2end = End2End(cfg=configuration)
+            fscore = end2end.train()
+            print('********',fscore)
+            return fscore
+        
+        SPLIT = 0
+        # study = optuna.create_study(study_name=f"study_db_WS0",direction = 'maximize', storage=f"sqlite:///final_runs.db", load_if_exists=True)
+        study = optuna.create_study(study_name=f"study_final_{SPLIT}_db",direction = 'maximize', storage=f"sqlite:///final_runs.db", load_if_exists=True)
+        study.optimize(objective, n_trials=1)
+        # joblib.dump(study, study_filename)
+        os.system('sbatch runner_hyper.sh')
+        
+        # def objective(trial):
 
-    """Weak supervision"""
+        #     # vars(args)['DILATE'] = trail.suggest_int('DILATE',1,17)
+        #     # vars(args)['EPOCHS'] = trial.suggest_categorical("EPOCHS", [1])
+        #     # vars(args)["LEARNING_RATE"] = trial.suggest_categorical("LEARNING_RATE", [0.6468867589109444])
+        #     # vars(args)["DELTA_CLS_LOSS"] = trial.suggest_categorical("DELTA_CLS_LOSS", [0.028373756707337477])
+        #     # # vars(args)["WEIGHTED_SEG_LOSS"] = trail.suggest_categorical("WEIGHTED_SEG_LOSS", [True, False])
+        #     # # if vars(args)["WEIGHTED_SEG_LOSS"]:
+        #     # #     vars(args)["WEIGHTED_SEG_LOSS"] = trail.suggest_int("WEIGHTED_SEG_LOSS_P",1,3)
+        #     # #     vars(args)["WEIGHTED_SEG_LOSS"] = trail.suggest_int("WEIGHTED_SEG_LOSS_MAX",1,3)
+        #     # vars(args)["DYN_BALANCED_LOSS"] = trial.suggest_categorical("DYN_BALANCED_LOSS", [True])
+        #     # vars(args)["GRADIENT_ADJUSTMENT"] = trial.suggest_categorical("GRADIENT_ADJUSTMENT", [False])
+        #     # vars(args)["MULTISEG"] = trial.suggest_categorical("MULTISEG", [True])
+        #     # vars(args)["MULTIDEC"] = trial.suggest_categorical("MULTIDEC", [False])
+        #     # vars(args)["CLASSWEIGHTS"] = trial.suggest_categorical("CLASSWEIGHTS", [False])
+        #     # vars(args)["FREQUENCY_SAMPLING"] = trail.suggest_categorical("FREQUENCY_SAMPLING", [True])
+            
+        #     # args.RESULTS_PATH = os.path.join("E:/AI/FAPS/code/Mixedsupervision/results",param,str(val))
+        #     configuration = Config()
+        #     configuration.merge_from_args(args)
+        #     configuration.init_extra()
+        #     configuration.trial = trial
 
-        # # params = ["WEIGHTED_SEG_LOSS_P"]
-    # segments = [288]
-    # for seg in segments:
-    #     vars(args)["RUN_NAME"] = f'WS{seg}'
-    #     vars(args)["NUM_SEGMENTED"] = seg
-    #     configuration = Config()
-    #     configuration.merge_from_args(args)
-    #     configuration.init_extra()
+        #     # configuration.IOU_THRESHOLD = 0.5
+        #     end2end = End2End(cfg=configuration)
+        #     fscore = end2end.train()
+        #     print('********',fscore)
+        #     return fscore
+        
+        
 
-    #     end2end = End2End(cfg=configuration)
-    #     end2end.train()
-
-    """evaluation"""
-
-    # configuration = Config()
-    # configuration.merge_from_args(args)
-    # configuration.init_extra()
-
-    # end2end = End2End(cfg=configuration)
-    # device = end2end._get_device()
-    # model = end2end._get_model().to(device)
-    # end2end._set_results_path()
-    # optimizer = end2end._get_optimizer(model)
-    # loss_seg, loss_dec = end2end._get_loss(True), end2end._get_loss(False)    
-    # end2end.set_dec_gradient_multiplier(model, 0.0)
-    # end2end.eval(model, device, True, False, True)
-
-    # pd.read_csv('losses.csv')
-
-    """training model """
-    
-    # start = time.time()
-    # configuration = Config()
-    # configuration.merge_from_args(args)
-    # configuration.init_extra()
-
-    # end2end = End2End(cfg=configuration)
-    # end2end.train()
-    # print(f"\n\ntotal time = {time.time() - start}")
-
-    """IOU threshold selection"""
-
-    configuration = Config()
-    configuration.merge_from_args(args)
-    configuration.init_extra()
-
-    THRESHOLDS = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8]
-    # THRESHOLDS = [0.8]
+        # SPLIT = 65
+        # # study_filename = 'study_12.pkl'
+        # # if os.path.isfile(study_filename):
+        # #     study = joblib.load(study_filename)
+        # # else:
+        # #     study = optuna.create_study(direction='maximize',pruner=optuna.pruners.MedianPruner(
+        # #     n_startup_trials=10, n_warmup_steps=30, interval_steps=10))
+        # study = optuna.create_study(study_name=f"studytest_{SPLIT}_db",direction = 'maximize', storage=f"sqlite:///studytest_{SPLIT}.db", load_if_exists=True)
+        # study.optimize(objective, n_trials=1)
+        # # joblib.dump(study, study_filename)
+        # # os.system('sbatch runner_hyper.sh')
 
 
-    for thresh in THRESHOLDS:
+    else:
+        """training model """
+        
+        start = time.time()
+        configuration = Config()
+        configuration.merge_from_args(args)
+        configuration.init_extra()
 
-        configuration.IOU_THRESHOLD = thresh
-        # configuration.RUN_NAME = f'{configuration.RUN_NAME }/THRESHOLD/{thresh}'
         end2end = End2End(cfg=configuration)
-        device = end2end._get_device()
-        model = end2end._get_model().to(device)
-        end2end._set_results_path()
-        optimizer = end2end._get_optimizer(model)
-        loss_seg, loss_dec = end2end._get_loss(True), end2end._get_loss(False)    
-        end2end.set_dec_gradient_multiplier(model, 0.0)
-        end2end.threshold_selection(model, device, False, False, True, 'TEST',"TEST")
-        end2end.threshold_selection(model, device, False, False, True, 'VAL',"VAL")
-        end2end.threshold_selection(model, device, False, False, True, 'TRAIN',"TRAIN")
-        end2end.eval(model, device, False, False, True,'TEST_2')
+        end2end.train()
+        print(f"\n\ntotal time = {time.time() - start}")
+
+        """IOU threshold selection"""
+
+        configuration = Config()
+        configuration.merge_from_args(args)
+        configuration.init_extra()
+
+        # THRESHOLDS = [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8]
+        THRESHOLDS = [0.5]
+
+
+        for thresh in THRESHOLDS:
+
+            configuration.IOU_THRESHOLD = thresh
+            # configuration.RUN_NAME = f'{configuration.RUN_NAME }/THRESHOLD/{thresh}'
+            end2end = End2End(cfg=configuration)
+            device = end2end._get_device()
+            model = end2end._get_model().to(device)
+            end2end._set_results_path()
+            optimizer = end2end._get_optimizer(model)
+            loss_seg, loss_dec = end2end._get_loss(True), end2end._get_loss(False)    
+            end2end.set_dec_gradient_multiplier(model, 0.0)
+            end2end.threshold_selection(model, device, True, False, True, 'TEST',"TEST")
+            end2end.threshold_selection(model, device, True, False, True, 'VAL',"VAL")
+            # end2end.threshold_selection(model, device, False, False, True, 'TRAIN',"TRAIN")
+
     
     
 

@@ -14,6 +14,9 @@ import cv2
 from config import Config
 from torch.utils.tensorboard import SummaryWriter
 from functional import iou_score,get_stats
+from sklearn.metrics import f1_score
+from math import isnan
+import optuna
 
 LVL_ERROR = 10
 LVL_INFO = 5
@@ -23,6 +26,23 @@ LOG = 1  # Will log all mesages with lvl greater than this
 SAVE_LOG = True
 
 WRITE_TENSORBOARD = False
+
+class EarlyStopper:
+    def __init__(self, patience=1, min_delta=0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.min_validation_loss = float('inf')
+
+    def early_stop(self, validation_loss):
+        if validation_loss < self.min_validation_loss:
+            self.min_validation_loss = validation_loss
+            self.counter = 0
+        elif validation_loss > (self.min_validation_loss + self.min_delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                return True
+        return False
 
 
 class End2End:
@@ -40,9 +60,11 @@ class End2End:
     def _log(self, message, lvl=LVL_INFO):
         n_msg = f"{self.run_name} {message}"
         if lvl >= LOG:
-            print(n_msg)
+            if True:
+            # if not self.cfg.HYPERPARAM:
+                print(n_msg)
 
-    def train(self,trail =None):
+    def train(self):
         self._set_results_path()
         self._create_results_dirs()
         self.print_run_params()
@@ -63,17 +85,17 @@ class End2End:
         validation_loader = get_dataset("VAL", self.cfg)
 
         tensorboard_writer = SummaryWriter(log_dir=self.tensorboard_path) if WRITE_TENSORBOARD else None
-
         train_results = self._train_model(device, model, train_loader, loss_seg, loss_dec, optimizer, validation_loader, tensorboard_writer)
         
         if self.cfg.HYPERPARAM:
             # exit()
-            return train_results[0][-1]
+            # print(train_results)
+            return train_results[1]
         
         self._save_train_results(train_results)
         self._save_model(model)
 
-        self.eval(model, device, self.cfg.SAVE_IMAGES, False, False)
+        self.threshold_selection(model, device, self.cfg.SAVE_IMAGES, False, False,dataset='VAL')
 
         self._save_params()
 
@@ -91,20 +113,22 @@ class End2End:
         self.eval_model(device, model, test_loader, save_folder=self.outputs_path, save_images=save_images, is_validation=False, plot_seg=plot_seg, prefix=prefix,reduction=reduction)
     
     def training_iteration(self, data, device, model, criterion_seg, criterion_dec, optimizer, weight_loss_seg, weight_loss_dec,
-                           tensorboard_writer, iter_index):
+                           tensorboard_writer, iter_index,isVal = False):
         images, seg_masks, seg_loss_masks, is_segmented, _ , y_val = data
 
         batch_size = self.cfg.BATCH_SIZE
         memory_fit = self.cfg.MEMORY_FIT  # Not supported yet for >1
-        class_weights =torch.FloatTensor([0.82,0.21,0.73,0.74,0.65,0.49,1.38,2.8,1.7,10.9,0.26])
-        class_weights = torch.ones(self.cfg.SEG_OUTSIZE)
-        class_weights = class_weights.view(1, self.cfg.SEG_OUTSIZE, 1,1).expand(-1, -1,  self.cfg.INPUT_HEIGHT//8, self.cfg.INPUT_WIDTH//8).to(self._get_device())
+        # class_weights =torch.FloatTensor([0.09, 0.02 , 0.08, 0.08, 0.07, 0.05, 0.15, 0.3 , 0.18, 1.  , 0.03])
+        # class_weights = torch.ones((1,self.cfg.SEG_OUTSIZE,self.cfg.INPUT_HEIGHT, self.cfg.INPUT_WIDTH)).to(self._get_device())
+        class_weights = torch.ones((1,self.cfg.SEG_OUTSIZE,self.cfg.INPUT_HEIGHT//self.cfg.DOWN_FACTOR, self.cfg.INPUT_WIDTH//self.cfg.DOWN_FACTOR)).to(self._get_device())
+        # class_weights = class_weights.view(1, self.cfg.SEG_OUTSIZE, 1,1).expand(-1, -1,  self.cfg.INPUT_HEIGHT//self.cfg.DOWN_FACTOR, self.cfg.INPUT_WIDTH//self.cfg.DOWN_FACTOR).to(self._get_device())
 
         num_subiters = int(batch_size / memory_fit)
         total_loss = 0
         total_correct = 0
 
-        optimizer.zero_grad()
+        if not isVal:
+            optimizer.zero_grad()
 
         total_loss_seg = 0
         total_loss_dec = 0
@@ -158,30 +182,41 @@ class End2End:
                 loss = weight_loss_dec * loss_dec
             total_loss += loss.item()
 
-            iou_metric = utils.iou_pytorch(output_seg_mask,seg_masks_,self.cfg.IOU_THRESHOLD,reduction='mean').item()
+            # iou_metric = utils.iou_pytorch(output_seg_mask,seg_masks_,self.cfg.IOU_THRESHOLD,reduction='mean').item()
 
             # tp, fp, fn, tn = get_stats(output_seg_mask,seg_masks_, mode='multilabel', threshold=self.cfg.IOU_THRESHOLD)
             # iou_metric = iou_score(tp, fp, fn, tn, reduction="micro")
-            ious.append(iou_metric)
+            if not isVal:
+                ious.append(1)
 
-            loss.backward()
+                loss.backward()
 
         # Backward and optimize
-        optimizer.step()
-        optimizer.zero_grad()
+        if not isVal:
+            optimizer.step()
+            optimizer.zero_grad()
 
-        return total_loss_seg, total_loss_dec, total_loss, np.mean(ious)
+        if isVal:
+            return total_loss_seg, total_loss_dec, total_loss, np.mean(ious),decision
+        else:
+            return total_loss_seg, total_loss_dec, total_loss, np.mean(ious)
 
     def _train_model(self, device, model, train_loader, criterion_seg, criterion_dec, optimizer, validation_set, tensorboard_writer,trail=None):
         losses = []
         validation_data = []
         max_validation = -1
         validation_step = self.cfg.VALIDATION_N_EPOCHS
+        # validation_loss_list = [np.inf,np.inf,np.inf]
+        es_seg = EarlyStopper(patience=5,min_delta=0)
+        es_dec = EarlyStopper(patience=5,min_delta=0)
 
         num_epochs = self.cfg.EPOCHS
         samples_per_epoch = len(train_loader) * self.cfg.BATCH_SIZE
-
+        val_samples_per_epoch = len(validation_set) * self.cfg.BATCH_SIZE
+        
         self.set_dec_gradient_multiplier(model, 0.0)
+
+        # self.reload_model(model)
 
         for epoch in range(num_epochs):
             if epoch % 5 == 0:
@@ -190,7 +225,7 @@ class End2End:
             model.train()
 
             weight_loss_seg, weight_loss_dec = self.get_loss_weights(epoch)
-            dec_gradient_multiplier = self.get_dec_gradient_multiplier()
+            dec_gradient_multiplier = self.get_dec_gradient_multiplier(epoch)
             self.set_dec_gradient_multiplier(model, dec_gradient_multiplier)
 
             epoch_loss_seg, epoch_loss_dec, epoch_loss = 0, 0, 0
@@ -218,6 +253,13 @@ class End2End:
 
                 epoch_ious.append(iou)
 
+                if isnan(epoch_loss):
+                    if self.cfg.HYPERPARAM:
+                        return -1,0
+                    else:
+                        self._log("loss in Nan")
+                        return None,-1
+
             end = timer()
 
             epoch_loss_seg = epoch_loss_seg / samples_per_epoch
@@ -228,24 +270,116 @@ class End2End:
             self._log(
                 f"Epoch {epoch + 1}/{num_epochs} ==> avg_loss_seg={epoch_loss_seg:.5f}, avg_loss_dec={epoch_loss_dec:.5f}, avg_loss={epoch_loss:.5f}, correct={epoch_correct}/{samples_per_epoch}, in {end - start:.2f}s/epoch (fwd/bck in {time_acc:.2f}s/epoch)")
 
+        
             if tensorboard_writer is not None:
                 tensorboard_writer.add_scalar("Loss/Train/segmentation", epoch_loss_seg, epoch)
                 tensorboard_writer.add_scalar("Loss/Train/classification", epoch_loss_dec, epoch)
                 tensorboard_writer.add_scalar("Loss/Train/joined", epoch_loss, epoch)
                 tensorboard_writer.add_scalar("Accuracy/Train/", epoch_correct / samples_per_epoch, epoch)
 
-            if self.cfg.VALIDATE and (epoch % validation_step == 0 or epoch == num_epochs - 1):
-                validation_iou, validation_accuracy = self.eval_model(device, model, validation_set, None, False, True, False)
-                validation_data.append((validation_iou, epoch))
+        
+            
+            if True:
 
-                if validation_iou > max_validation:
-                    max_validation = validation_iou
-                    self._save_model(model, "best_state_dict.pth")
+                if self.cfg.VALIDATE and (epoch % 5 == 0 or epoch == num_epochs - 1)  :
 
-                model.train()
-                if tensorboard_writer is not None:
-                    tensorboard_writer.add_scalar("Accuracy/Validation/", validation_accuracy, epoch)
+                    model.eval()
 
+                    epoch_loss_seg, epoch_loss_dec, epoch_loss = 0, 0, 0
+                    epoch_correct = 0
+                    epoch_ious = [0]
+                    val_true = []
+                    val_pred = []
+
+                    for data in validation_set:
+                        val_true.append(data[-1].numpy().reshape(-1))
+                        curr_loss_seg, curr_loss_dec, curr_loss, iou,decision = self.training_iteration(data, device, model,
+                                                                                                criterion_seg,
+                                                                                                criterion_dec,
+                                                                                                optimizer, weight_loss_seg,
+                                                                                                weight_loss_dec,
+                                                                                                tensorboard_writer, (epoch * samples_per_epoch + iter_index),True)
+                        out = nn.Sigmoid()(decision)
+                        val_pred.append(out.detach().cpu().numpy().reshape(-1))
+                        # print(out)
+                        # self.eval_model(device, model, validation_set, None, False, True, False)
+                        
+
+                        
+
+                        epoch_loss_seg += curr_loss_seg
+                        epoch_loss_dec += curr_loss_dec
+                        epoch_loss += curr_loss
+
+                        epoch_ious.append(iou)
+
+                        if isnan(epoch_loss):
+                            if self.cfg.HYPERPARAM:
+                                return -1,0
+                            else:
+                                self._log("val loss in Nan")
+                                return None,-1
+
+                    v_prediction = np.array(val_pred)
+                    
+                    v_ground_truth = np.array(val_true)
+                    # print(v_prediction[:2,:])
+                    # print(v_ground_truth[:2,:])
+                    # self.eval_model(device, model, validation_set, None, False, True, False)
+
+                    fscore = []
+                    for thresh in [0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8]:
+                        # print(res[:,0])
+                        fscore.append(f1_score(v_ground_truth,v_prediction>=thresh,average='macro'))
+                    self._log(f's0 {fscore}')
+                    fscore = np.max(fscore)
+                    
+                    
+                    epoch_loss_seg = epoch_loss_seg / val_samples_per_epoch
+                    epoch_loss_dec = epoch_loss_dec / val_samples_per_epoch
+                    epoch_loss = epoch_loss / val_samples_per_epoch
+
+                    if self.cfg.HYPERPARAM:
+                        
+                        # self.cfg.trial.report(fscore, epoch)
+
+                        # if self.cfg.trial.should_prune():
+                        #     raise optuna.TrialPruned()
+
+                        if es_seg.early_stop(epoch_loss_seg) and es_dec.early_stop(epoch_loss_dec):
+                            print(f'Early stop at {epoch}')
+                            return 0,fscore
+
+                        continue
+                    
+                    validation_data.append((epoch_loss_seg, epoch_loss_dec, epoch_loss,np.mean(epoch_ious) ,epoch, fscore))
+                    self._log(f'validation fscore = {fscore},thresh = {np.argmax(fscore)}, \n"Epoch {epoch + 1}/{num_epochs} ==> avg_loss_seg={epoch_loss_seg:.5f}, avg_loss_dec={epoch_loss_dec:.5f}, avg_loss={epoch_loss:.5f}')
+                    
+                    
+
+                    # if self.cfg.VALIDATE and (epoch % validation_step == 0 or epoch == num_epochs - 1)  :
+                    #     _ , test = self.eval_model(device, model, validation_set, None, False, True, False)
+
+            
+            # if self.cfg.HYPERPARAM:
+
+            #     if self.cfg.VALIDATE and (epoch % validation_step == 0 or epoch == num_epochs - 1)  :
+            #         _ , validation_data = self.eval_model(device, model, validation_set, None, False, True, False)
+
+                    # if es_seg.early_stop(epoch_loss_seg) and es_dec.early_stop(epoch_loss_dec):
+                    #         print(f'Early stop at {epoch}')
+                    #         return 0,fscore
+
+                    # self.cfg.trial.report(validation_data, epoch)
+
+                    # if self.cfg.trial.should_prune():
+                    #     raise optuna.TrialPruned()
+
+
+                    
+        if self.cfg.HYPERPARAM:
+            return 0,fscore
+        
         return losses, validation_data
 
     def eval_model(self, device, model, eval_loader, save_folder, save_images, is_validation, plot_seg, prefix='',reduction = 'mean'):
@@ -253,16 +387,25 @@ class End2End:
 
         dsize = self.cfg.INPUT_WIDTH, self.cfg.INPUT_HEIGHT
 
+        v_prediction = []
+        v_ground_truth = []
+
         res = []
         colors = np.array([(50, 69, 57), (170, 98, 195), (112, 168, 172), (112, 215, 214), (181, 72, 24), (22, 132, 221), (167, 228, 28), (124, 33, 204), (16, 0, 241), (72, 117, 136), (70, 113, 190), (149, 89, 6), (255, 255, 255)])
         # print('inside',eval_loader)
         for data_point in eval_loader:
             image, seg_mask, seg_loss_mask, _, sample_name,y_val = data_point
             image, seg_mask, y_val = image.to(device), seg_mask.to(device),y_val.reshape(1,self.cfg.DEC_OUTSIZE)
-            # is_pos = (seg_mask.max() > 0).reshape((1, 1)).to(device).item()
             prediction, pred_seg = model(image)
             pred_seg = nn.Sigmoid()(pred_seg)
             prediction = nn.Sigmoid()(prediction)
+
+            # print('\n\n\n')
+            # print(prediction)
+            # exit()
+
+            # if True:
+            #     pred_seg[0][prediction.reshape(-1)<0.6] = torch.zeros((pred_seg.shape[2:])).to(device)
 
             # if is_pos:
             iou_metric = utils.iou_pytorch(pred_seg,seg_mask,self.cfg.IOU_THRESHOLD,reduction='none').cpu().numpy()
@@ -286,6 +429,8 @@ class End2End:
             # seg_mask_img = seg_mask_img.detach().cpu().numpy()
 
             y_val = y_val.detach().cpu().numpy().reshape(-1)
+            if self.cfg.DATASET != 'PA_M':
+                y_val = (seg_mask.max() > 0).reshape(-1).astype(np.int32)
             sample_name = sample_name.item()
 
             # predictions.append(prediction)
@@ -293,47 +438,76 @@ class End2End:
 
             res.append((prediction.reshape(-1),y_val, sample_name,iou_metric_mean,iou_metric.reshape(-1)))
             # res.append((prediction.reshape(-1),y_val, sample_name,iou_metric))
-            if not is_validation:
-                if save_images:
-                    image = cv2.resize(np.transpose(image[0, :, :, :], (1, 2, 0)), dsize)
-                    image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-                    # np.transpose(seg_mask_img, (1, 2, 0))
-                    seg_mask = np.transpose(seg_mask[0], (1, 2, 0))
-                    ground_label = np.zeros((*seg_mask.shape[:-1],3))#np.transpose(seg_mask[0], (1, 2, 0))*np.array([[0,0,0]])
+            
+            if save_images:
+                image = cv2.resize(np.transpose(image[0, :, :, :], (1, 2, 0)), dsize)
+                image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+                # np.transpose(seg_mask_img, (1, 2, 0))
+                seg_mask = np.transpose(seg_mask[0], (1, 2, 0))
+                ground_label = np.zeros((*seg_mask.shape[:-1],3))#np.transpose(seg_mask[0], (1, 2, 0))*np.array([[0,0,0]])
+                
+                pred_seg = np.transpose(pred_seg[0], (1, 2, 0))
+                pred_seg = np.where(pred_seg < self.cfg.IOU_THRESHOLD ,0,pred_seg)
+                pred_label = np.zeros((*seg_mask.shape[:-1],3))
+
+                for i in range(ground_label.shape[0]):
+                    for j in range(ground_label.shape[1]):
+                        if seg_mask[i,j].max() != 0:
+                            label = seg_mask[i,j].argmax()
+                            ground_label[i,j] = colors[label]
+                        if pred_seg[i,j].max() != 0:
+                            label = pred_seg[i,j].argmax()
+                            pred_label[i,j] = colors[label]
+
                     
-                    pred_seg = np.transpose(pred_seg[0], (1, 2, 0))
-                    pred_seg = np.where(pred_seg < self.cfg.IOU_THRESHOLD ,0,pred_seg)
-                    pred_label = np.zeros((*seg_mask.shape[:-1],3))
+                ground_label = cv2.resize(ground_label, seg_mask.shape[::-1][1:],interpolation = cv2.INTER_NEAREST).astype(np.uint8)
+                # ground_label = cv2.cvtColor(ground_label, cv2.COLOR_RGB2BGR)  
+                pred_label = cv2.resize(pred_label,seg_mask.shape[::-1][1:],interpolation = cv2.INTER_NEAREST).astype(np.uint8) 
 
-                    for i in range(ground_label.shape[0]):
-                        for j in range(ground_label.shape[1]):
-                            if seg_mask[i,j].max() != 0:
-                                label = seg_mask[i,j].argmax()
-                                ground_label[i,j] = colors[label]
-                            if pred_seg[i,j].max() != 0:
-                                label = pred_seg[i,j].argmax()
-                                pred_label[i,j] = colors[label]
+                utils.plot_sample(sample_name, image, pred_label, ground_label, save_folder, decision=prediction, plot_seg=plot_seg,threshold=self.cfg.IOU_THRESHOLD)
 
-                        
-                    ground_label = cv2.resize(ground_label, seg_mask.shape[::-1][1:],interpolation = cv2.INTER_NEAREST).astype(np.uint8)
-                    # ground_label = cv2.cvtColor(ground_label, cv2.COLOR_RGB2BGR)  
-                    pred_label = cv2.resize(pred_label,seg_mask.shape[::-1][1:],interpolation = cv2.INTER_NEAREST).astype(np.uint8) 
+            
+                
+            v_prediction.append(prediction.reshape(-1))
+            v_ground_truth.append(y_val)
 
-                    utils.plot_sample(sample_name, image, pred_label, ground_label, save_folder, decision=prediction, plot_seg=plot_seg,threshold=self.cfg.IOU_THRESHOLD)
 
         
-        if is_validation:
-            iou_m = np.mean(np.array(res)[:,3])
-            return iou_m, 1.0
-        else:
-            utils.evaluate_metrics(res, self.run_path, self.run_name,self.cfg.IOU_THRESHOLD, prefix)
+        v_prediction = np.array(v_prediction)
+        # print('\n\n\n')
+        # print(v_prediction[:2,:])
+        # print(v_ground_truth[:2,:])
+        # exit()
+        v_ground_truth = np.array(v_ground_truth)
+        # print(v_ground_truth[:2,:])
+        # exit()
+        res = np.array(res)
+        iou_m = np.mean(res[:,3])
+        fscore = []
+        for thresh in [0.2,0.3,0.4,0.5,0.6,0.7,0.8]:
+            # print(res[:,0])
+            fscore.append(f1_score(v_ground_truth,v_prediction>=thresh,average='macro'))
+        # fscore = np.max(fscore)
+        self._log(f's1 validation fscore = {fscore},thresh = {np.argmax(fscore)}')
+        fscore = np.max(fscore)
+            
 
-    def get_dec_gradient_multiplier(self):
+        
+            # return iou_m, fscore
+            
+        
+        utils.evaluate_metrics(res, self.run_path, self.run_name,self.cfg.IOU_THRESHOLD, prefix)
+
+    def get_dec_gradient_multiplier(self,epoch):
         if self.cfg.GRADIENT_ADJUSTMENT:
             grad_m = 0
         else:
             grad_m = 1
+
+        if self.cfg.GRADIENT_ADJUSTMENT:
+            grad_m = 0 if epoch<70 else 1
 
         self._log(f"Returning dec_gradient_multiplier {grad_m}", LVL_DEBUG)
         return grad_m
@@ -343,6 +517,7 @@ class End2End:
 
     def get_loss_weights(self, epoch):
         total_epochs = float(self.cfg.EPOCHS)
+        # total_epochs = 70
 
         if self.cfg.DYN_BALANCED_LOSS:
             seg_loss_weight = 1 - (epoch / total_epochs)
@@ -350,7 +525,7 @@ class End2End:
         else:
             seg_loss_weight = 1
             dec_loss_weight = self.cfg.DELTA_CLS_LOSS
-
+        
         self._log(f"Returning seg_loss_weight {seg_loss_weight} and dec_loss_weight {dec_loss_weight}", LVL_DEBUG)
         return seg_loss_weight, dec_loss_weight
 
@@ -377,28 +552,42 @@ class End2End:
     def _save_train_results(self, results):
         losses, validation_data = results
         ls, ld, l, iou,le  = map(list, zip(*losses))
+        if self.cfg.VALIDATE:
+            v_ls, v_ld, v_l, v_iou,v_e,v_fscore = map(list, zip(*validation_data))
         # plt.plot(le, l, label="Loss", color="red")
         plt.figure(figsize=(15,15))
         plt.plot(le, ls, label="Loss seg",color = 'blue')
         plt.plot(le, ld, label="Loss dec",color = 'red')
         plt.plot(le, l, label="Loss total",color = 'yellow')
-        plt.plot(le, iou, label="train IOU",color = 'green')
-        # plt.plot(le, ld, label="Loss dec")
-        if self.cfg.VALIDATE:
-            v_iou, v_e = map(list, zip(*validation_data))
-            plt.plot(v_e,v_iou,label="test IOU", color="brown")
 
+        if self.cfg.VALIDATE:
+            plt.plot(v_e,v_ld,label="val loss dec", color="orange")
+            plt.plot(v_e,v_ls,label="val loss seg", color="brown")
+            plt.plot(v_e,v_l,label="val loss ", color="brown")
         plt.ylim((0, 1))
         plt.xlabel("Epochs")
         plt.legend()
         plt.savefig(os.path.join(self.run_path, "loss_IOU"), dpi=200)
 
+        # plt.plot(le, ld, label="Loss dec")
+        plt.figure(figsize=(15,15))
+
+        if self.cfg.VALIDATE:
+            
+            plt.plot(v_e,v_fscore,label="val fscore", color="violet")
+
+        plt.ylim((0, 1))
+        plt.xlabel("Epochs")
+        plt.legend()
+        plt.savefig(os.path.join(self.run_path, "metric"), dpi=200)
+
+
         df_loss = pd.DataFrame(data={"loss_seg": ls, "loss_dec": ld, "loss": l, "IOU" :iou, "epoch": le})
         df_loss.to_csv(os.path.join(self.run_path, "losses.csv"), index=False)
 
         if self.cfg.VALIDATE:
-            v, ve = map(list, zip(*validation_data))
-            df_loss = pd.DataFrame(data={"validation_data": ls, "loss_dec": ld, "loss": l, "epoch": le})
+            # v, vf, ve = map(list, zip(*validation_data))
+            df_loss = pd.DataFrame(data={"loss_seg": ls, "loss_dec": ld, "loss": l, "epoch": le})
             df_loss.to_csv(os.path.join(self.run_path, "losses.csv"), index=False)
 
     def _save_model(self, model, name="final_state_dict.pth"):
@@ -414,12 +603,12 @@ class End2End:
 
     def _get_loss(self, is_seg):
 
-        weights =torch.from_numpy(np.ones(self.cfg.DEC_OUTSIZE)) * 7
-
         if is_seg:
-            weights =torch.from_numpy(np.ones(self.cfg.SEG_OUTSIZE)) * 7
-            weights = weights.view(1, self.cfg.SEG_OUTSIZE, 1,1).expand(-1, -1,  self.cfg.INPUT_HEIGHT//8, self.cfg.INPUT_WIDTH//8)
-        # reduction = "none" if self.cfg.WEIGHTED_SEG_LOSS and is_seg else "mean"
+            # weights =torch.from_numpy(np.ones((1,self.cfg.SEG_OUTSIZE,self.cfg.INPUT_HEIGHT, self.cfg.INPUT_WIDTH))) 
+            weights =torch.from_numpy(np.ones((1,self.cfg.SEG_OUTSIZE,self.cfg.INPUT_HEIGHT//self.cfg.DOWN_FACTOR, self.cfg.INPUT_WIDTH//self.cfg.DOWN_FACTOR))) * 7  if self.cfg.CLASSWEIGHTS else None
+
+            return nn.BCEWithLogitsLoss(pos_weight=weights,reduction='none').to(self._get_device())
+        weights =torch.from_numpy(np.ones(self.cfg.DEC_OUTSIZE)) * 7  if self.cfg.CLASSWEIGHTS else None
         return nn.BCEWithLogitsLoss(pos_weight=weights,reduction='none').to(self._get_device())
 
     def _get_device(self):
@@ -446,7 +635,7 @@ class End2End:
         list(map(utils.create_folder, [self.run_path, self.model_path, self.outputs_path, ]))
 
     def _get_model(self):
-        seg_net = SegDecNet(self._get_device(), self.cfg.INPUT_WIDTH, self.cfg.INPUT_HEIGHT, self.cfg.INPUT_CHANNELS, self.cfg.SEG_OUTSIZE,self.cfg.DEC_OUTSIZE, self.cfg.DATASET)
+        seg_net = SegDecNet(self._get_device(), self.cfg.INPUT_WIDTH, self.cfg.INPUT_HEIGHT, self.cfg.INPUT_CHANNELS,self.cfg.DATASET,self.cfg)
         return seg_net
 
     def print_run_params(self):

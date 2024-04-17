@@ -58,6 +58,8 @@ class PAMultiDataset(Dataset):
             sample_name = os.path.basename(os.path.normpath(img_p))
             sample_name = int(sample_name[:-4])
             is_seg,seg_p = 1 if len(seg_paths[i]) > 0 else 0, seg_paths[i]
+            if not is_seg:
+                seg_p = None
             pos_samples.append([None,None,None,is_seg,img_p,seg_p,sample_name,y_vals[i]])
 
         
@@ -76,7 +78,7 @@ class PAMultiDataset(Dataset):
         self.num_pos = len(pos_samples)
         self.num_neg = len(neg_samples)
         self.len = 2 * len(pos_samples) if self.kind in ['TRAIN'] else len(pos_samples) + len(neg_samples)
-        print(self.kind,self.num_neg,self.num_pos)
+        # print(self.kind,self.num_neg,self.num_pos)
         if self.num_neg == 0:
             self.len = self.num_pos
             

@@ -2,6 +2,7 @@ import math
 import torch
 import torch.nn as nn
 from torch.nn import init
+from torchvision.transforms import Resize
 
 BATCHNORM_TRACK_RUNNING_STATS = False
 BATCHNORM_MOVING_AVERAGE_DECAY = 0.9997
@@ -50,49 +51,27 @@ class FeatureNorm(nn.Module):
         f_mean = torch.mean(features, dim=self.reduce_dims, keepdim=True)
         return self.scale * ((features - f_mean) / (f_std + self.eps).sqrt()) + self.bias
 
+class DecNet(nn.Module):
 
-class SegDecNet(nn.Module):
-    def __init__(self, device, input_width, input_height, input_channels,seg_outsize= 1,dec_outsize = 1,dataset = 'PA_M'):
-        super(SegDecNet, self).__init__()
-        if input_width % 8 != 0 or input_height % 8 != 0:
-            raise Exception(f"Input size must be divisible by 8! width={input_width}, height={input_height}")
-        self.input_width = input_width
-        self.input_height = input_height
-        self.input_channels = input_channels
-        self.dataset = dataset
-        self.seg_num_class = seg_outsize
-        self.dec_num_class = dec_outsize
-        self.volume = nn.Sequential(_conv_block(self.input_channels, 32, 5, 2),
-                                    # _conv_block(32, 32, 5, 2), # Has been accidentally left out and remained the same since then
-                                    nn.MaxPool2d(2),
-                                    _conv_block(32, 64, 5, 2),
-                                    _conv_block(64, 64, 5, 2),
-                                    _conv_block(64, 64, 5, 2),
-                                    nn.MaxPool2d(2),
-                                    _conv_block(64, 64, 5, 2),
-                                    _conv_block(64, 64, 5, 2),
-                                    _conv_block(64, 64, 5, 2),
-                                    _conv_block(64, 64, 5, 2),
-                                    nn.MaxPool2d(2),
-                                    _conv_block(64, 1024, 15, 7))
-
-        self.seg_mask = nn.Sequential(
-            Conv2d_init(in_channels=1024, out_channels= self.seg_num_class, kernel_size=1, padding=0, bias=False),
-            FeatureNorm(num_features=self.seg_num_class, eps=0.001, include_bias=False)) #here
+    def __init__(self,device,input_width, input_height,dec_outsize = 1, seg_outsize= 1):
+        super(DecNet, self).__init__()
 
         self.extractor = nn.Sequential(nn.MaxPool2d(kernel_size=2),
-                                       _conv_block(in_chanels=1024+self.seg_num_class, out_chanels=8, kernel_size=5, padding=2),
+                                       _conv_block(in_chanels=1024+seg_outsize, out_chanels=8, kernel_size=5, padding=2),
+                                       nn.Dropout(0.3),
                                        nn.MaxPool2d(kernel_size=2),
                                        _conv_block(in_chanels=8, out_chanels=16, kernel_size=5, padding=2),
+                                       nn.Dropout(0.3),
                                        nn.MaxPool2d(kernel_size=2),
+                                       nn.Dropout(0.3),
                                        _conv_block(in_chanels=16, out_chanels=32, kernel_size=5, padding=2))
 
         self.global_max_pool_feat = nn.MaxPool2d(kernel_size=32)
         self.global_avg_pool_feat = nn.AvgPool2d(kernel_size=32)
-        self.global_max_pool_seg = nn.MaxPool2d(kernel_size=(self.input_height / 8, self.input_width / 8))
-        self.global_avg_pool_seg = nn.AvgPool2d(kernel_size=(self.input_height / 8, self.input_width / 8))
+        self.global_max_pool_seg = nn.MaxPool2d(kernel_size=(input_height / 8, input_width / 8))
+        self.global_avg_pool_seg = nn.AvgPool2d(kernel_size=(input_height / 8, input_width / 8))
 
-        self.fc = nn.Linear(in_features=64 + 2*self.seg_num_class, out_features=self.dec_num_class)
+        self.fc = nn.Linear(in_features=64 + 2*seg_outsize, out_features=dec_outsize)
 
         self.volume_lr_multiplier_layer = GradientMultiplyLayer().apply
         self.glob_max_lr_multiplier_layer = GradientMultiplyLayer().apply
@@ -100,22 +79,20 @@ class SegDecNet(nn.Module):
         
 
         self.device = device
-
+    
+    
 
     def set_gradient_multipliers(self, multiplier):
+
         self.volume_lr_multiplier_mask = (torch.ones((1,)) * multiplier).to(self.device)
         self.glob_max_lr_multiplier_mask = (torch.ones((1,)) * multiplier).to(self.device)
         self.glob_avg_lr_multiplier_mask = (torch.ones((1,)) * multiplier).to(self.device)
 
-    def forward(self, input):
-        volume = self.volume(input)
-        seg_mask = self.seg_mask(volume)
+    def forward(self,features,seg_mask):
+        
+        features = self.volume_lr_multiplier_layer(features, self.volume_lr_multiplier_mask)
 
-        cat = torch.cat([volume, seg_mask], dim=1)
-
-        cat = self.volume_lr_multiplier_layer(cat, self.volume_lr_multiplier_mask)
-
-        features = self.extractor(cat)
+        features = self.extractor(features)
         global_max_feat = torch.max(torch.max(features, dim=-1, keepdim=True)[0], dim=-2, keepdim=True)[0]
         global_avg_feat = torch.mean(features, dim=(-1, -2), keepdim=True)
         global_max_seg = torch.max(torch.max(seg_mask, dim=-1, keepdim=True)[0], dim=-2, keepdim=True)[0]
@@ -131,7 +108,109 @@ class SegDecNet(nn.Module):
 
         fc_in = torch.cat([global_max_feat, global_avg_feat, global_max_seg, global_avg_seg], dim=1)
         fc_in = fc_in.reshape(fc_in.size(0), -1)
-        prediction = self.fc(fc_in)
+        return self.fc(fc_in)
+    
+class SegNet(nn.Module):
+    def __init__(self,device,seg_outsize= 1):
+        super(SegNet, self).__init__()
+        self.seg_num_class = seg_outsize
+        self.seg_mask = nn.Sequential(
+            Conv2d_init(in_channels=1024, out_channels=1, kernel_size=1, padding=0, bias=False),
+            FeatureNorm(num_features=seg_outsize, eps=0.001, include_bias=False))
+        self.device = device
+        
+
+    def forward(self,volume):
+
+        return self.seg_mask(volume)
+
+
+class SegDecNet(nn.Module):
+    def __init__(self, device, input_width, input_height, input_channels,dataset = 'PA_M',cfg=None):
+        super(SegDecNet, self).__init__()
+        if input_width % 8 != 0 or input_height % 8 != 0:
+            raise Exception(f"Input size must be divisible by 8! width={input_width}, height={input_height}")
+        self.print = True
+        self.input_width = input_width
+        self.input_height = input_height
+        self.input_channels = input_channels
+        self.dataset = dataset
+        self.cfg = cfg
+        # self.seg_num_class = 1 if self.cfg.MULTISEG else self.cfg.SEG_OUTSIZE
+        # self.dec_num_class  = 1 if self.cfg.MULTIDEC else self.cfg.DEC_OUTSIZE
+
+        self.volume = nn.Sequential(_conv_block(self.input_channels, 32, 5, 2),
+                                    _conv_block(32, 32, 5, 2), # Has been accidentally left out and remained the same since then
+                                    nn.MaxPool2d(2),
+                                    nn.Dropout(0.25),
+                                    _conv_block(32, 64, 5, 2),
+                                    _conv_block(64, 64, 5, 2),
+                                    _conv_block(64, 64, 5, 2),
+                                    nn.MaxPool2d(2),
+                                    nn.Dropout(0.25),
+                                    _conv_block(64, 64, 5, 2),
+                                    _conv_block(64, 64, 5, 2),
+                                    _conv_block(64, 64, 5, 2),
+                                    _conv_block(64, 64, 5, 2),
+                                    nn.MaxPool2d(2),
+                                    nn.Dropout(0.25),
+                                    _conv_block(64, 1024, 15, 7))
+
+        self.segnet_list = torch.nn.ModuleList([])
+        if self.cfg.MULTISEG:
+            for _ in range(self.cfg.SEG_OUTSIZE):
+                self.segnet_list.append(SegNet(device,1))
+        else:
+            self.segnet_list.append(SegNet(device,self.cfg.SEG_OUTSIZE))
+        
+        
+        self.decnet_list = torch.nn.ModuleList([])
+        if self.cfg.MULTIDEC:
+            for _ in range(self.cfg.DEC_OUTSIZE):
+                self.decnet_list.append(DecNet(device,input_width, input_height,1,self.cfg.SEG_OUTSIZE))
+        else:
+            self.decnet_list.append(DecNet(device,input_width, input_height,self.cfg.DEC_OUTSIZE,self.cfg.SEG_OUTSIZE))
+
+        self.device = device
+
+
+    def set_gradient_multipliers(self, multiplier):
+
+        for declayer in self.decnet_list:
+            declayer.set_gradient_multipliers(multiplier)
+
+    def forward(self, input):
+        h,w = input.shape[-2:]
+        volume = self.volume(input)
+
+        seg_mask = []
+        for seglayer in self.segnet_list:
+            seg_mask.append(seglayer(volume))
+
+        seg_mask = torch.cat(seg_mask, dim=1)
+        # print('seg',seg_mask.shape)
+        cat = torch.cat([volume, seg_mask], dim=1)
+        # print('cat',cat.shape)
+
+        
+        # h,w = input.shape[-2:]
+        # volume = self.volume(input)
+        # down_input = Resize((h//8,w//8))(input)
+        # if self.print:
+        #     print(down_input.shape)
+        #     print(volume.shape)
+        #     self.print = 0
+        # new_volume = torch.cat([down_input,volume], dim=1)
+        # seg_mask = self.seg_mask(new_volume)
+        # cat = torch.cat([volume, seg_mask], dim=1)
+
+
+        prediction = []
+        for declayer in self.decnet_list:
+            prediction.append(declayer(cat,seg_mask))
+
+        prediction = torch.cat(prediction, dim=1)
+
         return prediction, seg_mask
 
 

@@ -1,0 +1,98 @@
+### Starting TaskPrologue of job 597828 on tg071 at Mon 29 May 2023 11:15:35 AM CEST
+Running on cores 4-5,8-9,20-21,24-25 with governor ondemand
+Mon May 29 11:15:35 2023       
++---------------------------------------------------------------------------------------+
+| NVIDIA-SMI 530.41.03              Driver Version: 530.41.03    CUDA Version: 12.1     |
+|-----------------------------------------+----------------------+----------------------+
+| GPU  Name                  Persistence-M| Bus-Id        Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp  Perf            Pwr:Usage/Cap|         Memory-Usage | GPU-Util  Compute M. |
+|                                         |                      |               MIG M. |
+|=========================================+======================+======================|
+|   0  Tesla V100-PCIE-32GB            On | 00000000:3B:00.0 Off |                    0 |
+| N/A   35C    P0               27W / 250W|      0MiB / 32768MiB |      0%      Default |
+|                                         |                      |                  N/A |
++-----------------------------------------+----------------------+----------------------+
+                                                                                         
++---------------------------------------------------------------------------------------+
+| Processes:                                                                            |
+|  GPU   GI   CI        PID   Type   Process name                            GPU Memory |
+|        ID   ID                                                             Usage      |
+|=======================================================================================|
+|  No running processes found                                                           |
++---------------------------------------------------------------------------------------+
+### Finished TaskPrologue
+
+[ WARN:0@10.302] global loadsave.cpp:244 findDecoder imread_('train/12101.png'): can't open/read file: check file path/integrity
+F246_KSDD2 Executing run with path /home/woody/iwfa/iwfa024h/results2/KSDD2/F246_KSDD2
+F246_KSDD2 BATCH_SIZE                : 1
+F246_KSDD2 DATASET                   : KSDD2
+F246_KSDD2 DATASET_PATH              : 
+F246_KSDD2 DEC_OUTSIZE               : 1
+F246_KSDD2 DELTA_CLS_LOSS            : 0.1
+F246_KSDD2 DILATE                    : 0
+F246_KSDD2 DYN_BALANCED_LOSS         : True
+F246_KSDD2 EPOCHS                    : 20
+F246_KSDD2 FOLD                      : 0
+F246_KSDD2 FREQUENCY_SAMPLING        : False
+F246_KSDD2 GPU                       : 0
+F246_KSDD2 GRADIENT_ADJUSTMENT       : True
+F246_KSDD2 HYPERPARAM                : False
+F246_KSDD2 INPUT_CHANNELS            : 3
+F246_KSDD2 INPUT_HEIGHT              : 640
+F246_KSDD2 INPUT_WIDTH               : 232
+F246_KSDD2 LEARNING_RATE             : 1.0
+F246_KSDD2 MEMORY_FIT                : 1
+F246_KSDD2 NUM_SEGMENTED             : 246
+F246_KSDD2 ON_DEMAND_READ            : False
+F246_KSDD2 REPRODUCIBLE_RUN          : True
+F246_KSDD2 RESULTS_PATH              : /home/woody/iwfa/iwfa024h/results2
+F246_KSDD2 SAVE_IMAGES               : True
+F246_KSDD2 SEG_OUTSIZE               : 1
+F246_KSDD2 SPLIT_LOCATION            : /home/hpc/iwfa/iwfa024h/Multi_Label_optical_Segmentation/splits/PA_M/split_280_D2.pyb
+F246_KSDD2 TRAIN_NUM                 : -1
+F246_KSDD2 USE_BEST_MODEL            : True
+F246_KSDD2 VALIDATE                  : True
+F246_KSDD2 VALIDATE_ON_TEST          : False
+F246_KSDD2 VALIDATION_N_EPOCHS       : 5
+F246_KSDD2 WEIGHTED_SEG_LOSS         : False
+F246_KSDD2 WEIGHTED_SEG_LOSS_MAX     : 3.0
+F246_KSDD2 WEIGHTED_SEG_LOSS_P       : 2.0
+F246_KSDD2 Reproducible run, fixing all seeds to:1337
+Traceback (most recent call last):
+  File "/home/hpc/iwfa/iwfa024h/Multi_Label_optical_Segmentation/train_net.py", line 201, in <module>
+    end2end.train()
+  File "/home/hpc/iwfa/iwfa024h/Multi_Label_optical_Segmentation/end2end.py", line 62, in train
+    train_loader = get_dataset("TRAIN", self.cfg)
+  File "/home/hpc/iwfa/iwfa024h/Multi_Label_optical_Segmentation/data/dataset_catalog.py", line 24, in get_dataset
+    ds = KSDD2Dataset(kind, cfg)
+  File "/home/hpc/iwfa/iwfa024h/Multi_Label_optical_Segmentation/data/input_ksdd2.py", line 23, in __init__
+    self.read_contents()
+  File "/home/hpc/iwfa/iwfa024h/Multi_Label_optical_Segmentation/data/input_ksdd2.py", line 34, in read_contents
+    image = self.read_img_resize(image_path, self.grayscale, self.image_size)
+  File "/home/hpc/iwfa/iwfa024h/Multi_Label_optical_Segmentation/data/dataset.py", line 129, in read_img_resize
+    img = cv2.resize(img, dsize=resize_dim)
+cv2.error: OpenCV(4.7.0) /io/opencv/modules/imgproc/src/resize.cpp:4062: error: (-215:Assertion failed) !ssize.empty() in function 'resize'
+
+=== JOB_STATISTICS ===
+=== current date     : Mon 29 May 2023 11:16:13 AM CEST
+= Job-ID             : 597828 on tinygpu
+= Job-Name           : MSsuface_test
+= Job-Command        : /home/hpc/iwfa/iwfa024h/Multi_Label_optical_Segmentation/runner_KSDD2.sh
+= Initial workdir    : /home/hpc/iwfa/iwfa024h/Multi_Label_optical_Segmentation
+= Queue/Partition    : v100
+= Slurm account      : iwfa with QOS=normal
+= Requested resources: cpu=8,mem=23000M,node=1,billing=8,gres/gpu=1,gres/gpu:v100=1 for 1-00:00:00
+= Elapsed runtime    : 00:00:40
+= Total RAM usage    : 0.3 GiB of requested 22 GiB (1.4%)   
+= Node list          : tg071
+= Subm/Elig/Start/End: 2023-05-29T11:15:32 / 2023-05-29T11:15:32 / 2023-05-29T11:15:33 / 2023-05-29T11:16:13
+======================
+=== Quota infos ======
+    Path              Used     SoftQ    HardQ    Gracetime  Filec    FileQ    FiHaQ    FileGrace    
+    /home/hpc            8.5G    52.4G   104.9G        N/A      51K     500K   1,000K        N/A    
+    /home/vault          0.0K   524.3G  1048.6G        N/A       1      200K     400K        N/A    
+    /home/woody          9.9G   500.0G   750.0G        N/A   3,182                           N/A    
+======================
+=== GPU utilization ==
+gpu_name, gpu_bus_id, pid, gpu_utilization [%], mem_utilization [%], max_memory_usage [MiB], time [ms]
+Tesla V100-PCIE-32GB, 00000000:3B:00.0, 114944, 0 %, 0 %, 486 MiB, 8144 ms
