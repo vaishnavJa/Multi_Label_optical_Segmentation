@@ -199,7 +199,10 @@ class Config:
             "HYPERPARAM" : self.HYPERPARAM,
             "SEG_OUTSIZE" : self.SEG_OUTSIZE,
             "DEC_OUTSIZE" : self.DEC_OUTSIZE,
-            "SPLIT_LOCATION" : self.SPLIT_LOCATION
+            "SPLIT_LOCATION" : self.SPLIT_LOCATION,
+            "MULTISEG" : self.MULTISEG,
+            "MULTIDEC" : self.MULTIDEC,
+            "CLASSWEIGHTS" : self.CLASSWEIGHTS
         }
         return params
 
@@ -236,5 +239,8 @@ def load_from_dict(dictionary):
     cfg.INPUT_CHANNELS = dictionary.get("INPUT_CHANNELS", None)
     cfg.SAVE_IMAGES = dictionary.get("SAVE_IMAGES", None)
     cfg.DILATE = dictionary.get("DILATE", None)
+    cfg.MULTISEG = dictionary.get("MULTISEG", None)
+    cfg.MULTIDEC = dictionary.get("MULTIDEC", None)
+    cfg.CLASSWEIGHTS = dictionary.get("CLASSWEIGHTS", None)
 
     return cfg

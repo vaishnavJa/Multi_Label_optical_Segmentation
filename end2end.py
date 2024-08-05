@@ -93,7 +93,7 @@ class End2End:
             return train_results[1]
         
         self._save_train_results(train_results)
-        self._save_model(model)
+        self._save_model(model,name='end_model.pth')
 
         self.threshold_selection(model, device, self.cfg.SAVE_IMAGES, False, False,dataset='VAL')
 
@@ -152,7 +152,8 @@ class End2End:
             decision, output_seg_mask = model(images_)
 
             if is_segmented[sub_iter]:
-
+                # print('here exiting')
+                # exit()
                 loss_seg = criterion_seg(output_seg_mask, seg_masks_) * class_weights
                 
                 if self.cfg.WEIGHTED_SEG_LOSS:
@@ -170,6 +171,9 @@ class End2End:
                 # total_correct += np.sum((decision.numpy() > 0.0))
                 total_correct += 1
                 loss = weight_loss_seg * loss_seg + weight_loss_dec * loss_dec
+
+                # print('seg detected, exiting')
+                # exit(0)
             else:
                 if self.cfg.DATASET == 'PA_M':
                     loss_dec = torch.mean(criterion_dec(decision, y_val_))
@@ -205,10 +209,11 @@ class End2End:
         losses = []
         validation_data = []
         max_validation = -1
+        best_val_score = 0
         validation_step = self.cfg.VALIDATION_N_EPOCHS
         # validation_loss_list = [np.inf,np.inf,np.inf]
-        es_seg = EarlyStopper(patience=5,min_delta=0)
-        es_dec = EarlyStopper(patience=5,min_delta=0)
+        es_seg = EarlyStopper(patience=2,min_delta=0)
+        es_dec = EarlyStopper(patience=2,min_delta=0)
 
         num_epochs = self.cfg.EPOCHS
         samples_per_epoch = len(train_loader) * self.cfg.BATCH_SIZE
@@ -219,8 +224,11 @@ class End2End:
         # self.reload_model(model)
 
         for epoch in range(num_epochs):
-            if epoch % 5 == 0:
-                self._save_model(model, f"ep_{epoch:02}.pth")
+
+            # if epoch  == 140:
+            #     break
+            
+            
 
             model.train()
 
@@ -339,18 +347,25 @@ class End2End:
                     epoch_loss_dec = epoch_loss_dec / val_samples_per_epoch
                     epoch_loss = epoch_loss / val_samples_per_epoch
 
-                    if self.cfg.HYPERPARAM:
+                    
                         
                         # self.cfg.trial.report(fscore, epoch)
 
                         # if self.cfg.trial.should_prune():
                         #     raise optuna.TrialPruned()
+                    
+                    if best_val_score < fscore:
+                        self._save_model(model, f"final_state_dict.pth")
+                        best_val_score = fscore
 
-                        if es_seg.early_stop(epoch_loss_seg) and es_dec.early_stop(epoch_loss_dec):
-                            print(f'Early stop at {epoch}')
+                    '''es_seg.early_stop(epoch_loss_seg) and''' 
+                    
+                    if es_dec.early_stop(epoch_loss_dec):
+                        print(f'Early stop at {epoch}')
+                        if self.cfg.HYPERPARAM:
                             return 0,fscore
-
-                        continue
+                        else:
+                            return losses, validation_data
                     
                     validation_data.append((epoch_loss_seg, epoch_loss_dec, epoch_loss,np.mean(epoch_ious) ,epoch, fscore))
                     self._log(f'validation fscore = {fscore},thresh = {np.argmax(fscore)}, \n"Epoch {epoch + 1}/{num_epochs} ==> avg_loss_seg={epoch_loss_seg:.5f}, avg_loss_dec={epoch_loss_dec:.5f}, avg_loss={epoch_loss:.5f}')
@@ -605,8 +620,8 @@ class End2End:
 
         if is_seg:
             # weights =torch.from_numpy(np.ones((1,self.cfg.SEG_OUTSIZE,self.cfg.INPUT_HEIGHT, self.cfg.INPUT_WIDTH))) 
-            weights =torch.from_numpy(np.ones((1,self.cfg.SEG_OUTSIZE,self.cfg.INPUT_HEIGHT//self.cfg.DOWN_FACTOR, self.cfg.INPUT_WIDTH//self.cfg.DOWN_FACTOR))) * 7  if self.cfg.CLASSWEIGHTS else None
-
+            # weights =torch.from_numpy(np.ones((1,self.cfg.SEG_OUTSIZE,self.cfg.INPUT_HEIGHT//self.cfg.DOWN_FACTOR, self.cfg.INPUT_WIDTH//self.cfg.DOWN_FACTOR))) * 7  if self.cfg.CLASSWEIGHTS else None
+            weights = None
             return nn.BCEWithLogitsLoss(pos_weight=weights,reduction='none').to(self._get_device())
         weights =torch.from_numpy(np.ones(self.cfg.DEC_OUTSIZE)) * 7  if self.cfg.CLASSWEIGHTS else None
         return nn.BCEWithLogitsLoss(pos_weight=weights,reduction='none').to(self._get_device())

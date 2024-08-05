@@ -41,6 +41,13 @@ class PAMultiDataset(Dataset):
             seg_paths = val_seg_path
             neg_paths = val_neg_path
             y_vals = val_y_vals
+
+        elif self.kind == 'TRAINVAL' :
+
+            img_paths = train_pos_path + val_pos_path
+            seg_paths = train_seg_path + val_seg_path
+            neg_paths = train_neg_path + val_neg_path
+            y_vals = np.vstack([train_y_vals, val_y_vals])
         
         else:
             img_paths = test_pos_path

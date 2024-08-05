@@ -92,7 +92,7 @@ class Dataset(torch.utils.data.Dataset):
                 else:
                     seg_loss_mask = self.distance_transform(seg_mask, self.cfg.WEIGHTED_SEG_LOSS_MAX, self.cfg.WEIGHTED_SEG_LOSS_P,y_val)
 
-            if self.kind == 'Train':
+            if self.kind == 'TRAIN' or 'TRAINVAL':
                 
                 if np.random.rand() > 0.5:
                     img = img[:, ::-1, :]

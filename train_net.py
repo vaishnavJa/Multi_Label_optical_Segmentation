@@ -60,9 +60,10 @@ def parse_args():
     parser.add_argument('--SEG_OUTSIZE', type=int, default=1, help="segmentation network output shape.")
     parser.add_argument('--DOWN_FACTOR', type=int, default=8, help="model dependent segmentation size reduction factor.")
     parser.add_argument('--SPLIT_LOCATION', type=str, default='', help="split location.")
-    parser.add_argument('--MULTISEG', type=str, default=False, help="split location.")
-    parser.add_argument('--MULTIDEC', type=str, default=False, help="split location.")
-    parser.add_argument('--CLASSWEIGHTS', type=str, default=False, help="split location.")
+    parser.add_argument('--MULTISEG', type=str2bool, default=False, help="split location.")
+    parser.add_argument('--MULTIDEC', type=str2bool, default=False, help="split location.")
+    parser.add_argument('--CLASSWEIGHTS', type=str2bool, default=False, help="split location.")
+    parser.add_argument('--EARLYSTOP', type=int, default=False, help="split location.")
 
     args = parser.parse_args()
 
@@ -70,6 +71,8 @@ def parse_args():
 
 
 if __name__ == '__main__':
+    
+    # exit()
     args = parse_args()
 
     """KSDD2 training"""
@@ -109,18 +112,18 @@ if __name__ == '__main__':
         def objective(trial):
 
             # vars(args)['DILATE'] = trail.suggest_int('DILATE',1,17)
-            vars(args)['EPOCHS'] = trial.suggest_int('EPOCHS',70,100)
-            vars(args)["LEARNING_RATE"] = trial.suggest_float("LEARNING_RATE",0.1,1.5)
-            vars(args)["DELTA_CLS_LOSS"] = trial.suggest_float("DELTA_CLS_LOSS",0,0.3)
-            vars(args)["WEIGHTED_SEG_LOSS"] = trial.suggest_categorical("WEIGHTED_SEG_LOSS", [True, False])
+            # vars(args)['EPOCHS'] = trial.suggest_int('EPOCHS',70,100)
+            vars(args)["LEARNING_RATE"] = trial.suggest_float("LEARNING_RATE",0.2,1.5)
+            # vars(args)["DELTA_CLS_LOSS"] = trial.suggest_float("DELTA_CLS_LOSS",0,0.15)
+            # vars(args)["WEIGHTED_SEG_LOSS"] = trial.suggest_categorical("WEIGHTED_SEG_LOSS", [True, False])
             # if vars(args)["WEIGHTED_SEG_LOSS"]:
-            #     vars(args)["WEIGHTED_SEG_LOSS"] = trail.suggest_int("WEIGHTED_SEG_LOSS_P",1,3)
-            #     vars(args)["WEIGHTED_SEG_LOSS"] = trail.suggest_int("WEIGHTED_SEG_LOSS_MAX",1,3)
+                # vars(args)["WEIGHTED_SEG_LOSS"] = trial.suggest_int("WEIGHTED_SEG_LOSS_P",1,3)
+                # vars(args)["WEIGHTED_SEG_LOSS"] = trial.suggest_int("WEIGHTED_SEG_LOSS_MAX",1,3)
             vars(args)["DYN_BALANCED_LOSS"] = trial.suggest_categorical("DYN_BALANCED_LOSS", [True, False])
-            vars(args)["GRADIENT_ADJUSTMENT"] = trial.suggest_categorical("GRADIENT_ADJUSTMENT", [True, False])
+            # vars(args)["GRADIENT_ADJUSTMENT"] = trial.suggest_categorical("GRADIENT_ADJUSTMENT", [True, False])
             # vars(args)["MULTISEG"] = trial.suggest_categorical("MULTISEG", [True, False])
-            # vars(args)["MULTIDEC"] = trial.suggest_categorical("MULTIDEC", [True, False])
-            # vars(args)["CLASSWEIGHTS"] = trial.suggest_categorical("CLASSWEIGHTS", [True, False])
+            vars(args)["MULTIDEC"] = trial.suggest_categorical("MULTIDEC", [True, False])
+            vars(args)["CLASSWEIGHTS"] = trial.suggest_categorical("CLASSWEIGHTS", [True, False])
             # vars(args)["FREQUENCY_SAMPLING"] = trail.suggest_categorical("FREQUENCY_SAMPLING", [True])
             
             # args.RESULTS_PATH = os.path.join("E:/AI/FAPS/code/Mixedsupervision/results",param,str(val))
@@ -137,8 +140,12 @@ if __name__ == '__main__':
         
         SPLIT = 0
         # study = optuna.create_study(study_name=f"study_db_WS0",direction = 'maximize', storage=f"sqlite:///final_runs.db", load_if_exists=True)
-        study = optuna.create_study(study_name=f"study_final_{SPLIT}_db",direction = 'maximize', storage=f"sqlite:///final_runs.db", load_if_exists=True)
-        study.optimize(objective, n_trials=1)
+        study = optuna.create_study(study_name=f"study_final_{SPLIT}_new",
+                                    direction = 'maximize', 
+                                    storage=f"sqlite:///final_runs.db", 
+                                    load_if_exists=True,
+                                    sampler=optuna.samplers.TPESampler(multivariate=True))
+        study.optimize(objective, n_trials=4)
         # joblib.dump(study, study_filename)
         os.system('sbatch runner_hyper.sh')
         
@@ -187,6 +194,7 @@ if __name__ == '__main__':
 
 
     else:
+       
         """training model """
         
         start = time.time()
@@ -221,7 +229,7 @@ if __name__ == '__main__':
             end2end.set_dec_gradient_multiplier(model, 0.0)
             end2end.threshold_selection(model, device, True, False, True, 'TEST',"TEST")
             end2end.threshold_selection(model, device, True, False, True, 'VAL',"VAL")
-            # end2end.threshold_selection(model, device, False, False, True, 'TRAIN',"TRAIN")
+            end2end.threshold_selection(model, device, False, False, True, 'TRAIN',"TRAIN")
 
     
     
